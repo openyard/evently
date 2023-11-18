@@ -6,6 +6,18 @@ import (
 	"github.com/openyard/evently/event"
 )
 
+type Entry struct {
+	GlobalPos uint64
+	Event     *event.Event
+}
+
+func NewEntry(globalPos uint64, event *event.Event) *Entry {
+	return &Entry{
+		GlobalPos: globalPos,
+		Event:     event,
+	}
+}
+
 // History is a slice of event.Event
 type History []*event.Event
 
@@ -17,10 +29,14 @@ type EventStore interface {
 	ReadStreamAt(stream string, at time.Time) (History, error)
 	// AppendToStream adds the events to the stream
 	AppendToStream(stream string, expectedVersion uint64, events ...*event.Event) error
+}
+
+// Transport interface provides methods to receive new events
+type Transport interface {
 	// Subscribe starts to listen for new events
-	Subscribe() <-chan *event.Event
+	Subscribe() <-chan []*Entry
 	// SubscribeWithOffset fetches remaining events based on given offset and listen for new events
-	SubscribeWithOffset(offset uint64) <-chan *event.Event
+	SubscribeWithOffset(offset uint64) <-chan []*Entry
 }
 
 // MultiEventStore appends events for multiple streams at once

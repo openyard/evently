@@ -5,107 +5,111 @@ import (
 	"log"
 	"sync"
 
+	"github.com/openyard/evently"
 	"github.com/openyard/evently/command/es"
-	"github.com/openyard/evently/event"
-	"github.com/openyard/evently/pkg/uuid"
+	"github.com/openyard/evently/query/consume"
 )
 
 type CatchUpOption func(s *CatchUpSubscription)
-
-type EventHandlers map[string]map[string]event.HandleFunc // event-name, event-handle (ID), event-handler
 
 // CatchUpSubscription is a subscription.CatchUpSubscription listening
 // on new eda.Event from EventStore
 type CatchUpSubscription struct {
 	sync.RWMutex
-	logger  *log.Logger
-	cancel  context.CancelFunc
 	context context.Context
+	cancel  context.CancelFunc
 
-	offset       uint64
-	events       <-chan *event.Event
-	eventStore   es.EventStore
-	eventHandler EventHandlers
-	onHandled    event.OnHandledFunc
+	entries    <-chan []*es.Entry
+	checkpoint *Checkpoint
+
+	transport es.Transport
+	consume   consume.ConsumerFunc
+	ack       AckFunc
+	nack      NackFunc
+
+	listening bool
 }
 
-func NewCatchUpSubscription(eventStore es.EventStore, opts ...CatchUpOption) *CatchUpSubscription {
-	s := &CatchUpSubscription{eventStore: eventStore, eventHandler: make(EventHandlers)}
+func NewCatchUpSubscription(transport es.Transport, opts ...CatchUpOption) *CatchUpSubscription {
+	s := &CatchUpSubscription{
+		transport: transport,
+		consume:   consume.DefaultConsumer.Handle,
+		ack:       noopAck,
+		nack:      noopNack,
+	}
 	for _, opt := range opts {
 		opt(s)
 	}
 	return s
 }
 
-// Listen starts to listen for subscribed events
+// Listen starts to listen for new events from the transport
 func (s *CatchUpSubscription) Listen() {
-	s.events = s.eventStore.SubscribeWithOffset(s.offset)
+	s.Lock()
+	defer s.Unlock()
+	if s.listening {
+		log.Printf("[%T] %s already listening - ignore", s, s.checkpoint.ID())
+		return
+	}
 	go func(s *CatchUpSubscription) {
-		s.context, s.cancel = context.WithCancel(context.Background())
+		evently.DEBUG("[%T] [DEBUG] start listening...", s)
 		for {
+			s.entries = s.transport.SubscribeWithOffset(s.checkpoint.GlobalPosition())
+			s.Lock()
+			s.context, s.cancel = context.WithCancel(context.Background())
+			s.Unlock()
 			select {
-			case event := <-s.events:
-				s.handle(event)
+			case entries := <-s.entries:
+				if err := s.consume(&consume.Context{Context: s.context}, entries...); err != nil {
+					log.Printf("[%T] [ERROR] couldn't handle all events: %s\n%v", s, err, entries)
+					s.nack(entries...)
+				}
+				evently.DEBUG("[%T] [DEBUG] ack all <%d> events: n%+v", s, len(entries), entries)
+				s.ack(entries...)
 			case <-s.context.Done():
+				evently.DEBUG("[%T] [DEBUG] context done <%v>", s, s.context.Err())
 				return
 			}
 		}
 	}(s)
 }
 
-// Unsubscribe cancels the CatchUpSubscription
-func (s *CatchUpSubscription) Unsubscribe() {
+func (s *CatchUpSubscription) Stop() {
+	s.Lock()
+	defer s.Unlock()
 	s.cancel()
 }
 
-// Subscribe registers the given event handler by event-types
-func (s *CatchUpSubscription) Subscribe(topic string, eventHandler event.HandleFunc) {
-	s.Lock()
-	defer s.Unlock()
-	projections, found := s.eventHandler[topic]
-	if !found {
-		projections = make(map[string]event.HandleFunc)
-	}
-	projections[uuid.NewV4().String()] = eventHandler
-	s.eventHandler[topic] = projections
-}
-
-// WithLogger sets the given logger to the CatchUpSubscription
-func WithLogger(logger *log.Logger) CatchUpOption {
+// WithCheckpoint sets the given checkpoint to the CatchUpSubscription
+func WithCheckpoint(checkpoint *Checkpoint) CatchUpOption {
 	return func(s *CatchUpSubscription) {
-		s.logger = logger
+		s.checkpoint = checkpoint
 	}
 }
 
-// WithOffset sets the given logger to the CatchUpSubscription
-func WithOffset(offset uint64) CatchUpOption {
+// WithConsumer sets the given consumer for the CatchUpSubscription instead of consume.DefaultConsumer
+func WithConsumer(consumer consume.Consumer) CatchUpOption {
 	return func(s *CatchUpSubscription) {
-		s.offset = offset
+		s.consume = consumer.Handle
 	}
 }
 
-// WithOnHandledFunc registers the given func to be called after handling an event
-func WithOnHandledFunc(f event.OnHandledFunc) CatchUpOption {
+// WithAckFunc uses the given ackFunc for the CatchUpSubscription if consumer result was successful
+func WithAckFunc(ackFunc AckFunc) CatchUpOption {
 	return func(s *CatchUpSubscription) {
-		s.onHandled = f
+		s.ack = ackFunc
 	}
 }
 
-func (s *CatchUpSubscription) handle(event *event.Event) {
-	s.RLock()
-	defer s.RUnlock()
-	eh, found := s.eventHandler[event.Name()]
-	if !found {
-		s.logger.Printf("no handle for event [%s], ignore...", event.Name())
-		return
-	}
-
-	for _, handle := range eh {
-		err := handle.Handle(event)
-		if err == nil && s.onHandled != nil {
-			s.onHandled(event)
-			continue
-		}
-		s.logger.Printf("could not publish event(%s, %q): %s", event.ID(), event.Name(), err.Error())
+// WithNackFunc uses the given nackFunc for the CatchUpSubscription if consumer result wasn't successful
+func WithNackFunc(nackFunc NackFunc) CatchUpOption {
+	return func(s *CatchUpSubscription) {
+		s.nack = nackFunc
 	}
 }
+
+type AckFunc func(entries ...*es.Entry)
+type NackFunc func(entries ...*es.Entry)
+
+func noopAck(_ ...*es.Entry)  {}
+func noopNack(_ ...*es.Entry) {}

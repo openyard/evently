@@ -15,7 +15,7 @@ func ExampleError_Error_withCause() {
 	// [009101-ErrReadStreamFailed] some error (cause: [009102-ErrConcurrentChange] root cause)
 }
 
-func ExampleError_Error_Unwrap() {
+func ExampleError_Error_unwrap() {
 	err := evently.Errorf(es.ErrReadStreamFailed, "ErrReadStreamFailed", "some error").CausedBy(evently.Errorf(es.ErrConcurrentChange, "ErrConcurrentChange", "root cause"))
 	fmt.Print(err.Unwrap())
 

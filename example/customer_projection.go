@@ -2,19 +2,17 @@ package example
 
 import (
 	"encoding/json"
-	"log"
-	"sync/atomic"
 	"time"
 
 	"github.com/openyard/evently/command/es"
 	"github.com/openyard/evently/event"
+	"github.com/openyard/evently/query/consume"
 	"github.com/openyard/evently/query/subscription"
 )
 
 type CustomerProjection struct {
-	subscription *subscription.CatchUpSubscription
-	customers    map[string]*APICustomer
-	checkpoint   uint64
+	customers  map[string]*APICustomer
+	checkpoint *subscription.Checkpoint
 }
 
 type APICustomer struct {
@@ -26,22 +24,44 @@ type APICustomer struct {
 	OnboardedAt string `json:"OnboardedAt"`
 }
 
-func NewCustomerProjection(eventStore es.EventStore) *CustomerProjection {
+func NewCustomerProjection(eventStore es.Transport) *CustomerProjection {
 	cp := &CustomerProjection{}
+	consume.Consume(cp.handle)
+
 	opts := []subscription.CatchUpOption{
-		subscription.WithLogger(log.Default()),
-		subscription.WithOffset(cp.checkpoint),
-		subscription.WithOnHandledFunc(func(event *event.Event) {
-			atomic.AddUint64(&cp.checkpoint, 1)
+		subscription.WithCheckpoint(cp.checkpoint),
+		subscription.WithConsumer(&consume.DefaultConsumer),
+		subscription.WithAckFunc(func(entries ...*es.Entry) {
+			cp.checkpoint.Update(cp.checkpoint.MaxGlobalPos(entries...))
 		}),
 	}
 	s := subscription.NewCatchUpSubscription(eventStore, opts...)
 	defer s.Listen()
-	s.Subscribe(newCustomerOnboardedEventName, cp.onCustomerOnboarded)
-	s.Subscribe(customerActivatedEventName, cp.onCustomerActivated)
-	s.Subscribe(customerBlockedEventName, cp.onCustomerBlocked)
-	cp.subscription = s
 	return cp
+}
+
+func (cp *CustomerProjection) Handle(ctx *consume.Context, events ...*event.Event) error {
+	return cp.handle(events...)
+}
+
+func (cp *CustomerProjection) handle(events ...*event.Event) error {
+	for _, e := range events {
+		switch e.Name() {
+		case newCustomerOnboardedEventName:
+			if err := cp.onCustomerOnboarded(e); err != nil {
+				return err
+			}
+		case customerActivatedEventName:
+			if err := cp.onCustomerActivated(e); err != nil {
+				return err
+			}
+		case customerBlockedEventName:
+			if err := cp.onCustomerBlocked(e); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (cp *CustomerProjection) onCustomerOnboarded(event *event.Event) error {
