@@ -1,10 +1,11 @@
 package subscription
 
 import (
-	"github.com/openyard/evently/command/es"
-	"log"
+	"github.com/openyard/evently/pkg/evently"
 	"sync/atomic"
 	"time"
+
+	"github.com/openyard/evently/command/es"
 )
 
 type CheckpointStore interface {
@@ -40,21 +41,21 @@ func (cp *Checkpoint) LastSeenAt() time.Time {
 }
 
 func (cp *Checkpoint) Update(newPos uint64) {
-	log.Printf("[%T] [DEBUG] update globalPos to <%d>", cp, newPos)
+	evently.DEBUG("[DEBUG][%T] update globalPos to <%d>", cp, newPos)
 	cp.globalPos.Store(newPos)
 }
 
 func (cp *Checkpoint) MaxGlobalPos(entries ...*es.Entry) uint64 {
 	if len(entries) == 0 {
-		log.Printf("[%T] [DEBUG] fallback to globalPos=%d", cp, cp.GlobalPosition())
+		evently.DEBUG("[DEBUG][%T] fallback to globalPos=%d", cp, cp.GlobalPosition())
 		return cp.GlobalPosition() // fallback
 	}
-	maxGlobalPos := entries[0].GlobalPos
+	maxGlobalPos := entries[0].GlobalPos()
 	for _, e := range entries {
-		if e.GlobalPos > maxGlobalPos {
-			maxGlobalPos = e.GlobalPos
+		if e.GlobalPos() > maxGlobalPos {
+			maxGlobalPos = e.GlobalPos()
 		}
 	}
-	log.Printf("[%T] [DEBUG] max globalPos=%d", cp, maxGlobalPos)
+	evently.DEBUG("[DEBUG][%T] max globalPos=%d", cp, maxGlobalPos)
 	return maxGlobalPos + 1
 }

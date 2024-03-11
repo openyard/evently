@@ -4,5 +4,6 @@ package es
 const (
 	ErrReadStreamFailed = iota + 9101
 	ErrConcurrentChange
+	ErrMisconfiguration
 	ErrListen
 )

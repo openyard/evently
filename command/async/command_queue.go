@@ -1,12 +1,12 @@
 package async
 
 import (
+	"github.com/openyard/evently/pkg/evently"
 	"log"
 	"os"
 	"sync"
 	"time"
 
-	"github.com/openyard/evently"
 	"github.com/openyard/evently/command"
 )
 

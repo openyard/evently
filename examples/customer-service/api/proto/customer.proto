@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package proto;
+
+option go_package = "customer/pkg/genproto/grpcapi;grpcapi";
+
+import public "google/type/date.proto";
+
+message OnboardingBatch {
+  repeated OnboardingRequest onboardings = 1;
+}
+
+message OnboardingBatchReply {
+  repeated OnboardingReply ids = 1;
+}
+
+message OnboardingRequest {
+  string name = 1;
+  google.type.Date birthdate = 2;
+  Sex sex = 3;
+}
+
+message OnboardingReply {
+  string id = 1;
+}
+
+message ActivationRequest {
+  string id = 1;
+}
+
+message ActivationReply {
+  bool result = 1;
+}
+
+message DeactivationRequest {
+  string id = 1;
+}
+
+message DeactivationReply {
+  bool result = 1;
+}
+
+enum Sex {
+  SEX_UNKNOWN = 0;
+  SEX_MALE = 1;
+  SEX_FEMALE = 2;
+}

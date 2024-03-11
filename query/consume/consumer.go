@@ -6,21 +6,17 @@ import (
 )
 
 type Consumer interface {
-	Handle(ctx *Context, events ...*es.Entry) error
-}
-
-func Consume(handler ...event.HandleFunc) {
-	DefaultConsumer.Consume(handler...)
-}
-
-func ConsumeFunc(consumer func(...*event.Event) error) {
-	DefaultConsumer.ConsumeFunc(consumer)
+	Handle(ctx *Context, entries ...*es.Entry) error
 }
 
 type ConsumerFunc func(*Context, ...*es.Entry) error
 
 func (f ConsumerFunc) Handle(ctx *Context, events ...*es.Entry) error {
 	return f(ctx, events...)
+}
+
+func Consume(handler ...event.HandleFunc) {
+	DefaultConsumer.Consume(handler...)
 }
 
 var DefaultConsumer defaultConsumer
@@ -42,7 +38,7 @@ func (c *defaultConsumer) Handle(ctx *Context, entries ...*es.Entry) error {
 func entries2events(entries []*es.Entry) []*event.Event {
 	events := make([]*event.Event, 0)
 	for _, entry := range entries {
-		events = append(events, entry.Event)
+		events = append(events, entry.Event())
 	}
 	return events
 }
@@ -55,8 +51,4 @@ func (c *defaultConsumer) Consume(handler ...event.HandleFunc) {
 	for _, h := range handler {
 		c.handler = append(c.handler, h)
 	}
-}
-
-func (c *defaultConsumer) ConsumeFunc(consumer ...event.HandleFunc) {
-	c.Consume(consumer...)
 }

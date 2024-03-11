@@ -2,10 +2,11 @@ package subscription
 
 import (
 	"context"
+	"github.com/openyard/evently/pkg/evently"
+	"github.com/openyard/evently/pkg/uuid"
 	"log"
 	"sync"
 
-	"github.com/openyard/evently"
 	"github.com/openyard/evently/command/es"
 	"github.com/openyard/evently/query/consume"
 )
@@ -16,6 +17,7 @@ type CatchUpOption func(s *CatchUpSubscription)
 // on new eda.Event from EventStore
 type CatchUpSubscription struct {
 	sync.RWMutex
+	id      string
 	context context.Context
 	cancel  context.CancelFunc
 
@@ -32,6 +34,7 @@ type CatchUpSubscription struct {
 
 func NewCatchUpSubscription(transport es.Transport, opts ...CatchUpOption) *CatchUpSubscription {
 	s := &CatchUpSubscription{
+		id:        uuid.NewV4().String(),
 		transport: transport,
 		consume:   consume.DefaultConsumer.Handle,
 		ack:       noopAck,
@@ -45,29 +48,30 @@ func NewCatchUpSubscription(transport es.Transport, opts ...CatchUpOption) *Catc
 
 // Listen starts to listen for new events from the transport
 func (s *CatchUpSubscription) Listen() {
+	log.Printf("[DEBUG][%T] Listen - ID=%s", s, s.id)
 	s.Lock()
 	defer s.Unlock()
 	if s.listening {
 		log.Printf("[%T] %s already listening - ignore", s, s.checkpoint.ID())
 		return
 	}
+	s.context, s.cancel = context.WithCancel(context.Background())
 	go func(s *CatchUpSubscription) {
-		evently.DEBUG("[%T] [DEBUG] start listening...", s)
+		evently.DEBUG("[DEBUG][%T] start listening...", s)
 		for {
 			s.entries = s.transport.SubscribeWithOffset(s.checkpoint.GlobalPosition())
-			s.Lock()
-			s.context, s.cancel = context.WithCancel(context.Background())
-			s.Unlock()
+			evently.DEBUG("[DEBUG][%T] enter for loop...", s)
 			select {
 			case entries := <-s.entries:
+				log.Printf("[DEBUG][%T] len(entries)=%d", s, len(entries))
 				if err := s.consume(&consume.Context{Context: s.context}, entries...); err != nil {
-					log.Printf("[%T] [ERROR] couldn't handle all events: %s\n%v", s, err, entries)
+					log.Printf("[ERROR][%T] couldn't handle all events: %s\n%v", s, err, entries)
 					s.nack(entries...)
 				}
-				evently.DEBUG("[%T] [DEBUG] ack all <%d> events: n%+v", s, len(entries), entries)
+				evently.DEBUG("[DEBUG][%T] ack all <%d> events: n%+v", s, len(entries), entries)
 				s.ack(entries...)
 			case <-s.context.Done():
-				evently.DEBUG("[%T] [DEBUG] context done <%v>", s, s.context.Err())
+				evently.DEBUG("[DEBUG][%T] context done <%v>", s, s.context.Err())
 				return
 			}
 		}

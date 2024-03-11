@@ -1,0 +1,12 @@
+FROM golang:1.21.7-alpine3.19 AS build
+RUN apk update && apk add --no-cache git
+WORKDIR $GOPATH/src/
+COPY . .
+RUN go mod download
+RUN go build -o /go/bin/customer-service ./cmd/customer-service/main.go
+
+FROM scratch AS release
+LABEL org.opencontainers.image.vendor="Openyard ES³"
+LABEL org.opencontainers.image.authors="info@openyard.de"
+COPY --from=build /go/bin/customer-service /bin/customer-service
+ENTRYPOINT ["/bin/customer-service"]

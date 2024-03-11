@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package proto;
+
+option go_package = "customer/pkg/genproto/grpcapi;grpcapi";
+
+import public "customer.proto";
+
+service Customer {
+  rpc OnboardCustomer(OnboardingRequest) returns (OnboardingReply) {}
+  rpc ActivateCustomer(ActivationRequest) returns (ActivationReply) {}
+  rpc DeactivateCustomer(DeactivationRequest) returns (DeactivationReply) {}
+}

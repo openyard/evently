@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package customer;
+
+import "google/type/date.proto";
+
+option go_package = "customer/internal/genproto/customer;customer";
+
+message OnboardedEvent {
+  string name = 1;
+  google.type.Date birthdate = 2;
+  Sex sex = 3;
+}
+
+message ActivatedEvent {}
+
+message DeactivatedEvent {
+  string reason = 1;
+
+}
+
+enum Sex {
+  SEX_UNKNOWN = 0;
+  SEX_MALE = 1;
+  SEX_FEMALE = 2;
+}
