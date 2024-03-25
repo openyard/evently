@@ -3,12 +3,12 @@ package domain
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/openyard/evently/pkg/evently"
 	"strings"
 	"time"
 
 	"github.com/openyard/evently/command"
 	"github.com/openyard/evently/event"
+	"github.com/openyard/evently/pkg/evently"
 )
 
 type State string

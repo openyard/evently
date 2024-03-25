@@ -31,7 +31,7 @@ func SubscribeCustomerEvents(
 	opts := []subscription.CatchUpOption{
 		subscription.WithCheckpoint(checkpoint),
 		subscription.WithAckFunc(func(entries ...*es.Entry) {
-			checkpoint.Update(checkpoint.MaxGlobalPos(entries...) + 1)
+			checkpoint.Update(checkpoint.MaxGlobalPos(entries...))
 		}),
 	}
 	s := subscription.NewCatchUpSubscription(transport, opts...)

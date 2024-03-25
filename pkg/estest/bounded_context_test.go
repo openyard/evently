@@ -2,13 +2,13 @@ package estest_test
 
 import (
 	"fmt"
-	"github.com/openyard/evently/command"
-	"github.com/openyard/evently/pkg/evently"
 	"testing"
 	"time"
 
+	"github.com/openyard/evently/command"
 	"github.com/openyard/evently/event"
 	"github.com/openyard/evently/pkg/estest"
+	"github.com/openyard/evently/pkg/evently"
 )
 
 func ExampleBoundedContext() {

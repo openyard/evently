@@ -2,12 +2,12 @@ package subscription
 
 import (
 	"context"
-	"github.com/openyard/evently/pkg/evently"
-	"github.com/openyard/evently/pkg/uuid"
 	"log"
 	"sync"
 
 	"github.com/openyard/evently/command/es"
+	"github.com/openyard/evently/pkg/evently"
+	"github.com/openyard/evently/pkg/uuid"
 	"github.com/openyard/evently/query/consume"
 )
 

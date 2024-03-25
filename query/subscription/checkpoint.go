@@ -42,7 +42,11 @@ func (cp *Checkpoint) LastSeenAt() time.Time {
 
 func (cp *Checkpoint) Update(newPos uint64) {
 	evently.DEBUG("[DEBUG][%T] update globalPos to <%d>", cp, newPos)
+	if newPos < cp.GlobalPosition() {
+		return
+	}
 	cp.globalPos.Store(newPos)
+	evently.DEBUG("[DEBUG][%T] updated globalPos to <%d>", cp, cp.GlobalPosition())
 }
 
 func (cp *Checkpoint) MaxGlobalPos(entries ...*es.Entry) uint64 {
