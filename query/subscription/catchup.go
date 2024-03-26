@@ -57,10 +57,12 @@ func (s *CatchUpSubscription) Listen() {
 	}
 	s.context, s.cancel = context.WithCancel(context.Background())
 	go func(s *CatchUpSubscription) {
+		s.listening = true
 		evently.DEBUG("[DEBUG][%T] start listening...", s)
 		for {
 			s.entries = s.transport.SubscribeWithOffset(s.checkpoint.GlobalPosition())
 			evently.DEBUG("[DEBUG][%T] enter for loop...", s)
+			evently.DEBUG("[DEBUG][%T] listening: %v", s, s.listening)
 			select {
 			case entries := <-s.entries:
 				log.Printf("[DEBUG][%T] len(entries)=%d", s, len(entries))
