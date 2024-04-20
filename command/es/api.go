@@ -19,12 +19,17 @@ type EventStore interface {
 // Transport interface provides methods to receive new events
 type Transport interface {
 	// Subscribe starts to listen for new events
-	Subscribe() <-chan []*Entry
+	// You use this method most likely for volatile-subscriptions to receive only new events from now on
+	Subscribe(limit uint16) chan []*Entry
 	// SubscribeWithOffset fetches remaining events based on given offset and listen for new events
-	SubscribeWithOffset(offset uint64) <-chan []*Entry
+	// You use this method most likely for catchup-subscriptions where the subscriber keeps the offset
+	SubscribeWithOffset(offset uint64, limit uint16) chan []*Entry
+	// SubscribeWithID fetches remaining events based on given ID and listen for new events
+	// You use this method most likely for persistent-subscriptions if the underlying Transport (EventStore) supports it
+	SubscribeWithID(ID string, limit uint16) chan []*Entry
 }
 
-// MultiStreamEventStore appends and reads events for multiple streams at once
+// MultiStreamEventStore appends and reads events for multiple streams at once in batch mode
 type MultiStreamEventStore interface {
 	// ReadStreams loads multiple stream and returns all streams and its events as map
 	ReadStreams(stream []string) (map[string]History, error)
