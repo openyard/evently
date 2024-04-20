@@ -1,6 +1,8 @@
 package consume
 
 import (
+	"fmt"
+
 	"github.com/openyard/evently/command/es"
 	"github.com/openyard/evently/event"
 )
@@ -26,6 +28,9 @@ type defaultConsumer struct {
 }
 
 func (c *defaultConsumer) Handle(ctx *Context, entries ...*es.Entry) error {
+	if len(c.handler) == 0 {
+		return fmt.Errorf("[%T][ERROR] no handlers registered", c)
+	}
 	events := entries2events(entries)
 	for _, h := range c.handler {
 		if err := h.Handle(events...); err != nil {

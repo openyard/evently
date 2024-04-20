@@ -2,8 +2,9 @@ package subscription
 
 import (
 	"context"
+	"fmt"
 	"log"
-	"sync"
+	"time"
 
 	"github.com/openyard/evently/command/es"
 	"github.com/openyard/evently/pkg/evently"
@@ -11,111 +12,131 @@ import (
 	"github.com/openyard/evently/query/consume"
 )
 
-type CatchUpOption func(s *CatchUpSubscription)
+const (
+	SLAMicro  = time.Millisecond * 10
+	SLAShort  = time.Second * 5
+	SLAMedium = time.Second * 60
+	SLALarge  = time.Minute * 10
+	SLAHuge   = time.Minute * 60
 
-// CatchUpSubscription is a subscription.CatchUpSubscription listening
+	BatchSizeXS BatchSize = 1024
+	BatchSizeS            = 2048
+	BatchSizeM            = 4096
+	BatchSizeL            = 8192
+	BatchSizeXL           = 16384
+
+	defaultSLA       = SLAShort
+	defaultBatchSize = BatchSizeM
+)
+
+// SLA defines the maximum time-period where eventual consistency
+// between event-store and projections / read-models can occur
+// Ability to make adjustments should be done on startup and via ENV as config value
+// Default SLA is set to SLAShort which is 5s
+type SLA time.Duration
+type BatchSize uint16
+
+// CatchUp is a subscription.CatchUp listening
 // on new eda.Event from EventStore
-type CatchUpSubscription struct {
-	sync.RWMutex
-	id      string
-	context context.Context
-	cancel  context.CancelFunc
+type CatchUp struct {
+	id       string
+	workerID string
 
-	entries    <-chan []*es.Entry
-	checkpoint *Checkpoint
+	commands chan *cmd
+	consume  consume.ConsumerFunc
+	ack      consume.AckFunc
+	nack     consume.NackFunc
+	ctx      context.Context
+	cancel   context.CancelFunc
 
-	transport es.Transport
-	consume   consume.ConsumerFunc
-	ack       AckFunc
-	nack      NackFunc
-
-	listening bool
+	ticker      *time.Ticker
+	isListening bool
 }
 
-func NewCatchUpSubscription(transport es.Transport, opts ...CatchUpOption) *CatchUpSubscription {
-	s := &CatchUpSubscription{
-		id:        uuid.NewV4().String(),
-		transport: transport,
-		consume:   consume.DefaultConsumer.Handle,
-		ack:       noopAck,
-		nack:      noopNack,
+func NewCatchUpSubscription(ID string, offset uint64, transport es.Transport, opts ...CatchUpOption) *CatchUp {
+	s := &CatchUp{
+		id:       ID,
+		workerID: uuid.NewV4().String(),
+		commands: make(chan *cmd),
+		consume:  consume.DefaultConsumer.Handle,
+		ack:      noopAck,
+		nack:     noopNack,
+		ticker:   time.NewTicker(defaultSLA),
 	}
 	for _, opt := range opts {
 		opt(s)
 	}
+	go s.start(offset, transport)
 	return s
 }
 
-// Listen starts to listen for new events from the transport
-func (s *CatchUpSubscription) Listen() {
-	log.Printf("[DEBUG][%T] Listen - ID=%s", s, s.id)
-	s.Lock()
-	defer s.Unlock()
-	if s.listening {
-		log.Printf("[%T] %s already listening - ignore", s, s.checkpoint.ID())
+func (s *CatchUp) Listen() {
+	if s.isListening {
+		log.Printf("[%T][WARN] %s/%s already listening - ignore", s, s.id, s.workerID)
 		return
 	}
-	s.context, s.cancel = context.WithCancel(context.Background())
-	go func(s *CatchUpSubscription) {
-		s.listening = true
-		evently.DEBUG("[DEBUG][%T] start listening...", s)
+	go func() {
+		s.isListening = true
 		for {
-			s.entries = s.transport.SubscribeWithOffset(s.checkpoint.GlobalPosition())
-			evently.DEBUG("[DEBUG][%T] enter for loop...", s)
-			evently.DEBUG("[DEBUG][%T] listening: %v", s, s.listening)
-			select {
-			case entries := <-s.entries:
-				log.Printf("[DEBUG][%T] len(entries)=%d", s, len(entries))
-				if err := s.consume(&consume.Context{Context: s.context}, entries...); err != nil {
-					log.Printf("[ERROR][%T] couldn't handle all events: %s\n%v", s, err, entries)
-					s.nack(entries...)
-				}
-				evently.DEBUG("[DEBUG][%T] ack all <%d> events: n%+v", s, len(entries), entries)
-				s.ack(entries...)
-			case <-s.context.Done():
-				evently.DEBUG("[DEBUG][%T] context done <%v>", s, s.context.Err())
-				return
+			for cmd := range s.commands {
+				go s.distribute(cmd.entries, cmd.onPublish, cmd.onError)
 			}
 		}
-	}(s)
+	}()
 }
 
-func (s *CatchUpSubscription) Stop() {
-	s.Lock()
-	defer s.Unlock()
+func (s *CatchUp) distribute(entries []*es.Entry, onPublished consume.AckFunc, onError consume.NackFunc) {
+	var errs []error
+	var messages []*consume.Msg
+	for _, e := range entries {
+		messages = append(messages, consume.NewMsg(e.Event().ID(), e.Event().Name(), e.Event().Payload()))
+	}
+	newContext := consume.NewContext(s.id, messages)
+	if err := s.consume(newContext, entries...); err != nil {
+		s := fmt.Errorf("consume entries(%+v) failed: %s", entries, err)
+		log.Printf("[ERROR] %s", s)
+		errs = append(errs, s)
+	}
+	if len(errs) == 0 && onPublished != nil {
+		onPublished(entries...)
+	} else if onError != nil {
+		onError(entries...)
+	}
+	return
+}
+
+func (s *CatchUp) start(offset uint64, transport es.Transport) {
+	log.Printf("[%T][INFO] start listening <id=%s,worker-id=%s>", s, s.id, s.workerID)
+	s.ctx, s.cancel = context.WithCancel(context.Background())
+	for {
+		select {
+		case <-s.ctx.Done():
+			log.Printf("[%T][INFO] stop subscription <id=%s,worker-id=%s>", s, s.id, s.workerID)
+			return
+		case <-s.ticker.C:
+			inflight := transport.SubscribeWithOffset(offset, defaultBatchSize)
+			entries := <-inflight
+			evently.DEBUG("[%T][DEBUG] inflight new entries(%d) ...", s, len(entries))
+			offset += uint64(len(entries))
+			s.commands <- &cmd{
+				entries:   entries,
+				onPublish: s.ack,
+				onError:   s.nack,
+			}
+			evently.DEBUG("[%T][DEBUG] new offset=%d", s, offset)
+		}
+	}
+}
+
+func (s *CatchUp) Stop() {
 	s.cancel()
 }
 
-// WithCheckpoint sets the given checkpoint to the CatchUpSubscription
-func WithCheckpoint(checkpoint *Checkpoint) CatchUpOption {
-	return func(s *CatchUpSubscription) {
-		s.checkpoint = checkpoint
-	}
+type cmd struct {
+	entries   []*es.Entry
+	onPublish consume.AckFunc
+	onError   consume.NackFunc
 }
-
-// WithConsumer sets the given consumer for the CatchUpSubscription instead of consume.DefaultConsumer
-func WithConsumer(consumer consume.Consumer) CatchUpOption {
-	return func(s *CatchUpSubscription) {
-		s.consume = consumer.Handle
-	}
-}
-
-// WithAckFunc uses the given ackFunc for the CatchUpSubscription if consumer result was successful
-func WithAckFunc(ackFunc AckFunc) CatchUpOption {
-	return func(s *CatchUpSubscription) {
-		s.ack = ackFunc
-	}
-}
-
-// WithNackFunc uses the given nackFunc for the CatchUpSubscription if consumer result wasn't successful
-func WithNackFunc(nackFunc NackFunc) CatchUpOption {
-	return func(s *CatchUpSubscription) {
-		s.nack = nackFunc
-	}
-}
-
-type AckFunc func(entries ...*es.Entry)
-type NackFunc func(entries ...*es.Entry)
 
 func noopAck(_ ...*es.Entry)  {}
 func noopNack(_ ...*es.Entry) {}

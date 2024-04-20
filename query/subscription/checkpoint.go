@@ -1,7 +1,7 @@
 package subscription
 
 import (
-	"github.com/openyard/evently/pkg/evently"
+	"sort"
 	"sync/atomic"
 	"time"
 
@@ -41,25 +41,24 @@ func (cp *Checkpoint) LastSeenAt() time.Time {
 }
 
 func (cp *Checkpoint) Update(newPos uint64) {
-	evently.DEBUG("[DEBUG][%T] update globalPos to <%d>", cp, newPos)
+	defer cp.updatedNow()
 	if newPos < cp.GlobalPosition() {
 		return
 	}
 	cp.globalPos.Store(newPos)
-	evently.DEBUG("[DEBUG][%T] updated globalPos to <%d>", cp, cp.GlobalPosition())
 }
 
 func (cp *Checkpoint) MaxGlobalPos(entries ...*es.Entry) uint64 {
 	if len(entries) == 0 {
-		evently.DEBUG("[DEBUG][%T] fallback to globalPos=%d", cp, cp.GlobalPosition())
 		return cp.GlobalPosition() // fallback
 	}
-	maxGlobalPos := entries[0].GlobalPos()
-	for _, e := range entries {
-		if e.GlobalPos() > maxGlobalPos {
-			maxGlobalPos = e.GlobalPos()
-		}
-	}
-	evently.DEBUG("[DEBUG][%T] max globalPos=%d", cp, maxGlobalPos)
-	return maxGlobalPos + 1
+	sort.Slice(entries[:], func(i, j int) bool {
+		return entries[i].GlobalPos() < entries[j].GlobalPos()
+	})
+	maxGlobalPos := entries[len(entries)-1].GlobalPos()
+	return maxGlobalPos
+}
+
+func (cp *Checkpoint) updatedNow() {
+	cp.lastSeenAt = time.Now()
 }

@@ -14,16 +14,16 @@ func TestConsumePipe_Handle(t *testing.T) {
 	called := make(chan string, 2)
 	firstConsumer := func(ctx *consume.Context, e ...*es.Entry) error {
 		for _, ev := range e {
-			t.Logf("processed %v by first handle", ev)
+			t.Logf("processed %+v by first handle", ev)
 		}
-		called <- "test handle called"
+		called <- "test handle #1 called"
 		return nil
 	}
 	secondConsumer := func(ctx *consume.Context, e ...*es.Entry) error {
 		for _, ev := range e {
-			t.Logf("processed %v by second handle", ev)
+			t.Logf("processed %+v by second handle", ev)
 		}
-		called <- "test handle called"
+		called <- "test handle #2 called"
 		return errors.New("test-error")
 	}
 	go func() {
