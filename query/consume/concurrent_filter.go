@@ -2,6 +2,7 @@ package consume
 
 import (
 	"context"
+	"log"
 
 	"github.com/openyard/evently/command/es"
 )
@@ -35,7 +36,7 @@ func (f *ConcurrentFilter) WithConsumer(c Consumer) *ConcurrentFilter {
 	return cf
 }
 
-func (f *ConcurrentFilter) Handle(ctx *Context, entries ...*es.Entry) error {
+func (f *ConcurrentFilter) Handle(ctx Context, entries ...*es.Entry) error {
 	f.ch <- &entriesWithContext{ctx, entries}
 	return nil
 }
@@ -51,6 +52,7 @@ func (f *ConcurrentFilter) start() (cancelFunc context.CancelFunc) {
 			for _, e := range entries.entries {
 				err := f.next.Handle(entries.ctx, e)
 				if err != nil && f.nack != nil {
+					log.Printf("[WARN] couldn't handle entry(#%d@%s id=%s): %s", e.GlobalPos(), e.Event().Name(), e.Event().ID(), err)
 					f.nack(e)
 					return
 				}
@@ -62,12 +64,12 @@ func (f *ConcurrentFilter) start() (cancelFunc context.CancelFunc) {
 	}
 }
 
-func (f *ConcurrentFilter) stop() {
+func (f *ConcurrentFilter) Stop() {
 	f.stopChan <- struct{}{}
 	f.cancel()
 }
 
 type entriesWithContext struct {
-	ctx     *Context
+	ctx     Context
 	entries []*es.Entry
 }

@@ -17,7 +17,7 @@ const (
 	SLAShort  = time.Second * 5
 	SLAMedium = time.Second * 60
 	SLALarge  = time.Minute * 10
-	SLAHuge   = time.Minute * 60
+	SLALong   = time.Minute * 60
 
 	BatchSizeXS BatchSize = 1024
 	BatchSizeS            = 2048
@@ -78,8 +78,9 @@ func (s *CatchUp) Listen() {
 	go func() {
 		s.isListening = true
 		for {
-			for cmd := range s.commands {
-				go s.distribute(cmd.entries, cmd.onPublish, cmd.onError)
+			select {
+			case cmd := <-s.commands:
+				s.distribute(cmd.entries, cmd.onPublish, cmd.onError)
 			}
 		}
 	}()
@@ -87,7 +88,7 @@ func (s *CatchUp) Listen() {
 
 func (s *CatchUp) distribute(entries []*es.Entry, onPublished consume.AckFunc, onError consume.NackFunc) {
 	var errs []error
-	var messages []*consume.Msg
+	var messages []consume.Msg
 	for _, e := range entries {
 		messages = append(messages, consume.NewMsg(e.Event().ID(), e.Event().Name(), e.Event().Payload()))
 	}

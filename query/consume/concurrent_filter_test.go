@@ -26,10 +26,13 @@ func TestNewConcurrentFilter(t *testing.T) {
 		called <- "handle called"
 		return err
 	}
-	consume.Consume(consumer)
-	sut := consume.NewConcurrentFilter(ackNack(t, acks), ackNack(t, nacks))
-	err := sut.Handle(testContext(), entries()...)
-	assert.NoError(t, err)
+	go func() {
+		consume.Consume(consumer)
+		sut := consume.NewConcurrentFilter(ackNack(t, acks), ackNack(t, nacks))
+		defer sut.Stop()
+		err := sut.Handle(testContext(), entries()...)
+		assert.NoError(t, err)
+	}()
 
 	t.Logf(<-called)
 	t.Logf(<-called)

@@ -12,14 +12,14 @@ import (
 
 func TestConsumePipe_Handle(t *testing.T) {
 	called := make(chan string, 2)
-	firstConsumer := func(ctx *consume.Context, e ...*es.Entry) error {
+	firstConsumer := func(ctx consume.Context, e ...*es.Entry) error {
 		for _, ev := range e {
 			t.Logf("processed %+v by first handle", ev)
 		}
 		called <- "test handle #1 called"
 		return nil
 	}
-	secondConsumer := func(ctx *consume.Context, e ...*es.Entry) error {
+	secondConsumer := func(ctx consume.Context, e ...*es.Entry) error {
 		for _, ev := range e {
 			t.Logf("processed %+v by second handle", ev)
 		}
@@ -29,7 +29,7 @@ func TestConsumePipe_Handle(t *testing.T) {
 	go func() {
 		p := consume.NewPipe(firstConsumer, consume.ConsumerFunc(secondConsumer))
 		err := p.Handle(
-			&consume.Context{},
+			consume.Context{},
 			es.NewEntry(1, event.NewDomainEvent("test/event-1", "4711")),
 			es.NewEntry(2, event.NewDomainEvent("test/event-2", "4711")))
 		strings.EqualFold("test-error", err.Error())

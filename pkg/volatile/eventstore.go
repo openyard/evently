@@ -10,52 +10,37 @@ import (
 	"github.com/openyard/evently/pkg/evently"
 )
 
-var _ es.EventStore = (*InMemoryEventStore)(nil)
-var _ es.Transport = (*InMemoryEventStore)(nil)
+const defaultOffset = 0
 
-// InMemoryEventStore is a volatile es.EventStore and es.Transport which can be used with single instance purpose.
+var (
+	_ es.EventStore = (*EventStore)(nil)
+	_ es.Transport  = (*EventStore)(nil)
+)
+
+// EventStore is a volatile es.EventStore and es.Transport which can be used with single instance purpose.
 // The most common use case is to use this EventStore for unit tests or local test scenarios of an event sourced
 // application.
-type InMemoryEventStore struct {
+type EventStore struct {
 	sync.RWMutex
 	streams map[string][]*event.Event
 	log     []*es.Entry
-	entries chan []*es.Entry
 }
 
-// WithInMemoryEventStore creates an in executes the given func passing
-func WithInMemoryEventStore(f func(es es.EventStore)) {
-	es_ := NewInMemoryEventStore()
+// WithVolatileEventStore creates an in-memory event-store and executes the given func
+func WithVolatileEventStore(f func(es *EventStore)) {
+	es_ := NewEventStore()
 	f(es_)
 }
 
-func NewInMemoryEventStore() *InMemoryEventStore {
-	return &InMemoryEventStore{
+// NewEventStore returns an initialized in-memory event-store with empty log and no streams yet
+func NewEventStore() *EventStore {
+	return &EventStore{
 		streams: make(map[string][]*event.Event),
 		log:     make([]*es.Entry, 0),
-		entries: make(chan []*es.Entry),
 	}
 }
 
-func (_es *InMemoryEventStore) ReadStream(name string) (es.History, error) {
-	_es.RLock()
-	defer _es.RUnlock()
-	return _es.streams[name], nil
-}
-
-func (_es *InMemoryEventStore) ReadStreamAt(name string, at time.Time) (es.History, error) {
-	_es.RLock()
-	defer _es.RUnlock()
-	hist := make(es.History, 0)
-	for _, e := range _es.streams[name] {
-		if e.OccurredAt().Before(at) {
-			hist = append(hist, e)
-		}
-	}
-	return hist, nil
-}
-
-func (_es *InMemoryEventStore) AppendToStream(name string, expectedVersion uint64, events ...*event.Event) error {
+func (_es *EventStore) AppendToStream(name string, expectedVersion uint64, events ...*event.Event) error {
 	_es.Lock()
 	defer _es.Unlock()
 	history := _es.streams[name]
@@ -70,27 +55,63 @@ func (_es *InMemoryEventStore) AppendToStream(name string, expectedVersion uint6
 	return nil
 }
 
-func (_es *InMemoryEventStore) Subscribe() <-chan []*es.Entry {
-	offset := len(_es.log)
-	_es.entries <- _es.log[offset:]
-	return _es.entries
+func (_es *EventStore) Log() []*es.Entry {
+	return _es.log
 }
 
-func (_es *InMemoryEventStore) SubscribeWithOffset(offset uint64) <-chan []*es.Entry {
+func (_es *EventStore) ReadStream(name string) (es.History, error) {
 	_es.RLock()
 	defer _es.RUnlock()
-	evently.DEBUG("[DEBUG][%T] len(log)=%d, offset=%d", _es, len(_es.log), offset)
-	entries := _es.log[offset:]
-	evently.DEBUG("[DEBUG][%T] _es.log[offset:]=%d", _es, len(entries))
-	go func() {
-		if len(entries) > 0 {
-			_es.entries <- entries
-		}
-	}()
-	evently.DEBUG("[DEBUG][%T] len(entries)=%d", _es, len(_es.entries))
-	return _es.entries
+	return _es.streams[name], nil
 }
 
-func (_es *InMemoryEventStore) Log() []*es.Entry {
-	return _es.log
+func (_es *EventStore) ReadStreamAt(name string, at time.Time) (es.History, error) {
+	_es.RLock()
+	defer _es.RUnlock()
+	hist := make(es.History, 0)
+	for _, e := range _es.streams[name] {
+		if e.OccurredAt().Before(at) {
+			hist = append(hist, e)
+		}
+	}
+	return hist, nil
+}
+
+func (_es *EventStore) Subscribe(limit uint16) chan []*es.Entry {
+	return _es.SubscribeWithOffset(defaultOffset, limit)
+}
+
+func (_es *EventStore) SubscribeWithOffset(offset uint64, limit uint16) chan []*es.Entry {
+	entries := make(chan []*es.Entry)
+	go _es.receiveBatch(offset, limit, entries)
+	return entries
+}
+
+func (_es *EventStore) SubscribeWithID(_ string, _ uint16) chan []*es.Entry {
+	panic(fmt.Sprintf("[%T][FATAL] subscription with ID not supported", _es))
+}
+
+func (_es *EventStore) receiveBatch(offset uint64, limit uint16, entries chan []*es.Entry) {
+	defer close(entries)
+	_es.sync(func() {
+		count := uint64(len(_es.log))
+		if offset >= count {
+			entries <- make([]*es.Entry, 0)
+			return
+		}
+		end := offset + uint64(limit)
+		if limit == 0 {
+			end = uint64(len(_es.log))
+		}
+		if end > count {
+			end = count
+		}
+		entries <- _es.log[offset:end]
+	})
+}
+
+func (_es *EventStore) sync(f func()) {
+	_es.RLock()
+	defer _es.RUnlock()
+	f()
 }

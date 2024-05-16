@@ -1,3 +1,3 @@
 package consume
 
-const defaultBufferSize = 100
+const defaultBufferSize = 128

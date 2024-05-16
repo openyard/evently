@@ -25,7 +25,7 @@ func NewHttpTransport() *HttpTransport {
 	_ = domain.SubscribeCustomerEvents(
 		subscription.NewCheckpoint("customer-events", 0, time.Now()),
 		reportingStore,
-		volatile.NewInMemoryEventStore())
+		volatile.NewEventStore())
 	p := projection.AllCustomersProjection(reportingStore)
 	return &HttpTransport{p}
 }

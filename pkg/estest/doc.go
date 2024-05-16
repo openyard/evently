@@ -1,2 +1,2 @@
-// Package estest provides a TestEventStore and helper methods for testing with an es.DomainModel
+// Package estest provides helper methods for testing an evently.DomainModel
 package estest

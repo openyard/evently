@@ -6,11 +6,11 @@ import (
 	"github.com/openyard/evently/query/subscription"
 )
 
+var _ subscription.CheckpointStore = (*CheckpointStore)(nil)
+
 type CheckpointStore struct {
 	db *sql.DB
 }
-
-var _ subscription.CheckpointStore = (*CheckpointStore)(nil)
 
 func NewCheckpointStore(db *sql.DB) *CheckpointStore {
 	cp := &CheckpointStore{db: db}

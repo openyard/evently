@@ -35,7 +35,7 @@ func TestDefaultConsumer_Handle(t *testing.T) {
 		c := consume.DefaultConsumer
 		c.Consume(firstHandle, secondHandle, thirdHandle)
 		err := c.Handle(
-			&consume.Context{},
+			consume.Context{},
 			es.NewEntry(1, event.NewDomainEvent("test/event-1", "4711")),
 			es.NewEntry(2, event.NewDomainEvent("test/event-2", "4711")))
 		strings.EqualFold("test-error", err.Error())

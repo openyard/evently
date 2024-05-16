@@ -1,15 +1,14 @@
 package volatile_test
 
 import (
-	"github.com/openyard/evently/pkg/volatile"
 	"testing"
 
-	"github.com/openyard/evently/command/es"
 	"github.com/openyard/evently/event"
+	"github.com/openyard/evently/pkg/volatile"
 )
 
 func TestInMemoryEventStore_ReadStream(t *testing.T) {
-	volatile.WithInMemoryEventStore(func(es es.EventStore) {
+	volatile.WithVolatileEventStore(func(es *volatile.EventStore) {
 		history, err := es.ReadStream("empty")
 		if err != nil {
 			t.Error(err)
@@ -23,7 +22,7 @@ func TestInMemoryEventStore_ReadStream(t *testing.T) {
 }
 
 func TestInMemoryEventStore_AppentToStream(t *testing.T) {
-	volatile.WithInMemoryEventStore(func(es es.EventStore) {
+	volatile.WithVolatileEventStore(func(es *volatile.EventStore) {
 		changes := []*event.Event{{}, {}}
 		if err := es.AppendToStream("parts", 0, changes...); err != nil {
 			t.Errorf("failed to append partOne: %s", err.Error())

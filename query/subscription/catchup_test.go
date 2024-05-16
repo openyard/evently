@@ -1,21 +1,19 @@
 package subscription_test
 
 import (
-	"fmt"
-	"github.com/openyard/evently/query/consume"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/openyard/evently/command/es"
 	"github.com/openyard/evently/event"
 	"github.com/openyard/evently/pkg/volatile"
+	"github.com/openyard/evently/query/consume"
 	"github.com/openyard/evently/query/subscription"
 )
 
 func TestCatchUpSubscription_Listen(t *testing.T) {
-	volatile.WithInMemoryEventStore(func(_es *volatile.InMemoryEventStore) {
+	volatile.WithVolatileEventStore(func(_es *volatile.EventStore) {
 		setup(_es, 123)
 
 		var done sync.WaitGroup
@@ -49,19 +47,6 @@ func TestCatchUpSubscription_Listen(t *testing.T) {
 			t.Errorf("[TestCatchUpSubscription_Listen] expected checkpoint@129, but is @%d", testCheckpoint.GlobalPosition())
 		}
 	})
-}
-
-func handleFunc(id string, t *testing.T, wg *sync.WaitGroup, hc chan string, count *atomic.Int32) func(event ...*event.Event) error {
-	return func(event ...*event.Event) error {
-		for _, e := range event {
-			s := fmt.Sprintf("[TEST] handle event <%s> (%s/%s) by handler <%s>", e.ID(), e.AggregateID(), e.Name(), id)
-			count.Store(count.Add(1))
-			//t.Log(s)
-			hc <- fmt.Sprintf("count: %d, %s", count.Load(), s)
-			wg.Done()
-		}
-		return nil
-	}
 }
 
 func setup(_es es.EventStore, j int) {

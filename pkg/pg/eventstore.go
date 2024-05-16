@@ -3,15 +3,16 @@ package pg
 import (
 	"database/sql"
 	"fmt"
-	"github.com/openyard/evently/pkg/evently"
 	"log"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/lib/pq"
+
 	"github.com/openyard/evently/command/es"
 	"github.com/openyard/evently/event"
+	"github.com/openyard/evently/pkg/evently"
 )
 
 var (
@@ -208,14 +209,22 @@ func (_es *EventStore) AppendToStreams(streams map[string][]es.Change) error {
 	return tx.Commit()
 }
 
-func (_es *EventStore) Subscribe() <-chan []*es.Entry {
-	//TODO implement me
-	panic("implement me")
+func (_es *EventStore) Subscribe(limit uint16) chan []*es.Entry {
+	entries := make(chan []*es.Entry)
+	// TODO fetch entries
+	return entries
 }
 
-func (_es *EventStore) SubscribeWithOffset(offset uint64) <-chan []*es.Entry {
-	//TODO implement me
-	panic("implement me")
+func (_es *EventStore) SubscribeWithOffset(offset uint64, limit uint16) chan []*es.Entry {
+	entries := make(chan []*es.Entry)
+	// TODO fetch entries
+	return entries
+}
+
+func (_es *EventStore) SubscribeWithID(ID string, limit uint16) chan []*es.Entry {
+	entries := make(chan []*es.Entry)
+	// TODO fetch entries
+	return entries
 }
 
 func (_es *EventStore) queryStream(name string) (*sql.Rows, error) {

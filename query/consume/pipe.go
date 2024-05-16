@@ -14,7 +14,7 @@ func NewPipe(f ConsumerFunc, next Consumer) Consumer {
 	}
 }
 
-func (c consumePipe) Handle(ctx *Context, entries ...*es.Entry) error {
+func (c consumePipe) Handle(ctx Context, entries ...*es.Entry) error {
 	if err := c.consume(ctx, entries...); err != nil {
 		return err
 	}

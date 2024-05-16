@@ -22,7 +22,7 @@ type App struct {
 
 func NewCustomerApp(opts ...edge.GrpcTransportOption) *App {
 	factory := domain.NewFactory()
-	svc := evently.NewService(volatile.NewInMemoryEventStore(), factory.Create)
+	svc := evently.NewService(volatile.NewEventStore(), factory.Create)
 	grpcTransport := edge.NewGrpcTransport(svc.Process, opts...)
 	httpTransport := edge.NewHttpTransport()
 	return &App{

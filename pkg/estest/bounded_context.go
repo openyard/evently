@@ -3,13 +3,13 @@ package estest
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/openyard/evently/pkg/evently"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/openyard/evently/command"
 	"github.com/openyard/evently/event"
+	"github.com/openyard/evently/pkg/evently"
 )
 
 type BoundedContext struct {

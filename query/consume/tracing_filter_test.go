@@ -50,8 +50,8 @@ func entries() []*es.Entry {
 	}
 }
 
-func testContext() *consume.Context {
-	return consume.NewContext("my-subscription", []*consume.Msg{
+func testContext() consume.Context {
+	return consume.NewContext("my-subscription", []consume.Msg{
 		consume.NewMsg("4711", "test-message", []byte(`the message`)),
 	})
 }

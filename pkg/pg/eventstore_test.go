@@ -1,3 +1,6 @@
+//go:build integration
+// +build integration
+
 package pg_test
 
 import (
@@ -5,10 +8,12 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"os"
 	"testing"
 	"time"
 
 	_ "github.com/lib/pq"
+
 	"github.com/openyard/evently/command/es"
 	"github.com/openyard/evently/event"
 	"github.com/openyard/evently/pkg/pg"
@@ -172,6 +177,9 @@ func createStreams() map[string][]es.Change {
 }
 
 func printEvents(t *testing.T, err error, _db *sql.DB) {
+	if os.Getenv("TRACE") == "" {
+		return
+	}
 	/*
 		"select GLOBAL_POSITION, STREAM_NAME, AGGREGATE_ID, EVENT_ID, EVENT_NAME, EVENT_OCCURRED_AT, EVENT "+
 				"from EVENTS where STREAM_NAME = $1 order by EVENT_STAMP ASC"
