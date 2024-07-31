@@ -6,11 +6,11 @@ import (
 )
 
 type Batch struct {
-	es es.MultiStreamEventStore
+	es es.BatchEventStore
 	cf CreateFunc
 }
 
-func NewBatch(es es.MultiStreamEventStore, cf CreateFunc) *Batch {
+func NewBatch(es es.BatchEventStore, cf CreateFunc) *Batch {
 	return &Batch{
 		es: es,
 		cf: cf,
@@ -26,7 +26,7 @@ func (b *Batch) Process(commands []*command.Command) error {
 	if err != nil {
 		return err
 	}
-	var eventMap map[string][]es.Change
+	var streams map[string][]es.Change
 	for _, cmd := range commands {
 		dm := b.cf()
 		dm.Load(h[cmd.AggregateID()])
@@ -38,7 +38,7 @@ func (b *Batch) Process(commands []*command.Command) error {
 		for v, e := range changes {
 			changeList = append(changeList, es.NewChange(dm.version+uint64(v), e))
 		}
-		eventMap[cmd.AggregateID()] = changeList
+		streams[cmd.AggregateID()] = changeList
 	}
-	return b.es.AppendToStreams(eventMap)
+	return b.es.AppendToStreams(streams)
 }

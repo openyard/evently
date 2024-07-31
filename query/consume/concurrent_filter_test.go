@@ -16,24 +16,28 @@ func TestNewConcurrentFilter(t *testing.T) {
 	nacks := make(chan string, 1)
 
 	consumer := func(e ...*event.Event) error {
+		t.Helper()
 		var err error
 		for _, ev := range e {
 			t.Logf("processed %v", ev)
 			if ev.AggregateID() == "payment-124" {
 				err = fmt.Errorf("test-error for <%s-%s>", ev.ID(), ev.Name())
+				called <- "handle failed"
 			}
 		}
 		called <- "handle called"
 		return err
 	}
 	go func() {
+		t.Helper()
 		consume.Consume(consumer)
 		sut := consume.NewConcurrentFilter(ackNack(t, acks), ackNack(t, nacks))
+		err := sut.Consume(testContext(), entries()...)
 		defer sut.Stop()
-		err := sut.Handle(testContext(), entries()...)
 		assert.NoError(t, err)
 	}()
 
+	t.Logf(<-called)
 	t.Logf(<-called)
 	t.Logf(<-called)
 

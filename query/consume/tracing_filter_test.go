@@ -29,7 +29,7 @@ func TestNewTracingFilter(t *testing.T) {
 	defer span.End()
 
 	sut := consume.NewTracingFilter("my-subscription")
-	err := sut.Handle(ctx.WithParent(parentCtx), entries()...)
+	err := sut.Consume(ctx.WithParent(parentCtx), entries()...)
 	assert.NoError(t, err)
 
 	err = exp.ExportSpans(parentCtx, spanRec.Ended())

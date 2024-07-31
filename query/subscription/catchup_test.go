@@ -14,12 +14,14 @@ import (
 
 func TestCatchUpSubscription_Listen(t *testing.T) {
 	volatile.WithVolatileEventStore(func(_es *volatile.EventStore) {
+		t.Helper()
 		setup(_es, 123)
 
 		var done sync.WaitGroup
 		done.Add(1)
 		testCheckpoint := subscription.NewCheckpoint("test-subscription", uint64(len(_es.Log())+1), time.Now())
 		consume.Consume(func(events ...*event.Event) error {
+			t.Helper()
 			t.Logf("[TestCatchUpSubscription_Listen] handle <%d> event(s)", len(events))
 			return nil
 		})
@@ -43,14 +45,14 @@ func TestCatchUpSubscription_Listen(t *testing.T) {
 		_ = _es.AppendToStream("test-stream-2", 2, event.NewDomainEvent("test-event-6", "2"))
 
 		done.Wait()
-		if 128 != testCheckpoint.GlobalPosition() {
+		if 129 != testCheckpoint.GlobalPosition() {
 			t.Errorf("[TestCatchUpSubscription_Listen] expected checkpoint@129, but is @%d", testCheckpoint.GlobalPosition())
 		}
 	})
 }
 
 func setup(_es es.EventStore, j int) {
-	for i := 0; i < j; i++ {
+	for i := 0; i <= j; i++ {
 		_ = _es.AppendToStream("test-stream-0", uint64(i), event.NewDomainEvent("test-event", "0"))
 	}
 }

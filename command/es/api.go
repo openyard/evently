@@ -29,8 +29,8 @@ type Transport interface {
 	SubscribeWithID(ID string, limit uint16) chan []*Entry
 }
 
-// MultiStreamEventStore appends and reads events for multiple streams at once in batch mode
-type MultiStreamEventStore interface {
+// BatchEventStore appends and reads events for multiple streams at once in batch mode
+type BatchEventStore interface {
 	// ReadStreams loads multiple stream and returns all streams and its events as map
 	ReadStreams(stream []string) (map[string]History, error)
 	// AppendToStreams adds the events to the assigned streams in one batch

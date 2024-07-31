@@ -83,7 +83,7 @@ func (_es *EventStore) Subscribe(limit uint16) chan []*es.Entry {
 
 func (_es *EventStore) SubscribeWithOffset(offset uint64, limit uint16) chan []*es.Entry {
 	entries := make(chan []*es.Entry)
-	go _es.receiveBatch(offset, limit, entries)
+	go _es.receiveEntries(offset, limit, entries)
 	return entries
 }
 
@@ -91,7 +91,22 @@ func (_es *EventStore) SubscribeWithID(_ string, _ uint16) chan []*es.Entry {
 	panic(fmt.Sprintf("[%T][FATAL] subscription with ID not supported", _es))
 }
 
-func (_es *EventStore) receiveBatch(offset uint64, limit uint16, entries chan []*es.Entry) {
+func (_es *EventStore) receiveEntries(offset uint64, limit uint16, next chan []*es.Entry) {
+	defer close(next)
+	_es.sync(func() {
+		count := len(_es.log)
+		if offset >= uint64(count) {
+			next <- nil
+			return
+		}
+		if limit > uint16(count) {
+			limit = uint16(count)
+		}
+		next <- _es.log[offset:len(_es.log):limit]
+	})
+}
+
+func (_es *EventStore) receiveChunkEntries(offset uint64, limit uint16, entries chan []*es.Entry) {
 	defer close(entries)
 	_es.sync(func() {
 		count := uint64(len(_es.log))

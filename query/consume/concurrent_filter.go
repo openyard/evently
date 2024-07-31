@@ -36,7 +36,7 @@ func (f *ConcurrentFilter) WithConsumer(c Consumer) *ConcurrentFilter {
 	return cf
 }
 
-func (f *ConcurrentFilter) Handle(ctx Context, entries ...*es.Entry) error {
+func (f *ConcurrentFilter) Consume(ctx Context, entries ...*es.Entry) error {
 	f.ch <- &entriesWithContext{ctx, entries}
 	return nil
 }
@@ -50,7 +50,7 @@ func (f *ConcurrentFilter) start() (cancelFunc context.CancelFunc) {
 		default:
 			entries := <-f.ch
 			for _, e := range entries.entries {
-				err := f.next.Handle(entries.ctx, e)
+				err := f.next.Consume(entries.ctx, e)
 				if err != nil && f.nack != nil {
 					log.Printf("[WARN] couldn't handle entry(#%d@%s id=%s): %s", e.GlobalPos(), e.Event().Name(), e.Event().ID(), err)
 					f.nack(e)

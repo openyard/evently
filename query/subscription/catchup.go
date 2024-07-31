@@ -58,7 +58,7 @@ func NewCatchUpSubscription(ID string, offset uint64, transport es.Transport, op
 		id:       ID,
 		workerID: uuid.NewV4().String(),
 		commands: make(chan *cmd),
-		consume:  consume.DefaultConsumer.Handle,
+		consume:  consume.DefaultConsumer.Consume,
 		ack:      noopAck,
 		nack:     noopNack,
 		ticker:   time.NewTicker(defaultSLA),
@@ -117,8 +117,8 @@ func (s *CatchUp) start(offset uint64, transport es.Transport) {
 		case <-s.ticker.C:
 			inflight := transport.SubscribeWithOffset(offset, defaultBatchSize)
 			entries := <-inflight
-			evently.DEBUG("[%T][DEBUG] inflight new entries(%d) ...", s, len(entries))
-			offset += uint64(len(entries))
+			evently.DEBUG("[%T][DEBUG] inflight new entries(%+v) ...", s, len(entries))
+			offset += 1
 			s.commands <- &cmd{
 				entries:   entries,
 				onPublish: s.ack,

@@ -9,16 +9,15 @@ import (
 	"time"
 
 	"github.com/lib/pq"
-
 	"github.com/openyard/evently/command/es"
 	"github.com/openyard/evently/event"
 	"github.com/openyard/evently/pkg/evently"
 )
 
 var (
-	_ es.EventStore            = (*EventStore)(nil)
-	_ es.MultiStreamEventStore = (*EventStore)(nil)
-	_ es.Transport             = (*EventStore)(nil)
+	_ es.BatchEventStore = (*EventStore)(nil)
+	_ es.EventStore      = (*EventStore)(nil)
+	_ es.Transport       = (*EventStore)(nil)
 )
 
 type EventStore struct {

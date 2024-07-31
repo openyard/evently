@@ -33,8 +33,8 @@ func TestDefaultConsumer_Handle(t *testing.T) {
 
 	go func() {
 		c := consume.DefaultConsumer
-		c.Consume(firstHandle, secondHandle, thirdHandle)
-		err := c.Handle(
+		c.RegisterHandler(firstHandle, secondHandle, thirdHandle)
+		err := c.Consume(
 			consume.Context{},
 			es.NewEntry(1, event.NewDomainEvent("test/event-1", "4711")),
 			es.NewEntry(2, event.NewDomainEvent("test/event-2", "4711")))

@@ -18,7 +18,7 @@ func WithTicker(ticker *time.Ticker) CatchUpOption {
 // WithConsumer sets the given consumer for the CatchUp instead of consume.DefaultConsumer
 func WithConsumer(consumer consume.Consumer) CatchUpOption {
 	return func(s *CatchUp) {
-		s.consume = consumer.Handle
+		s.consume = consumer.Consume
 	}
 }
 

@@ -47,7 +47,7 @@ func NewInbox() *Inbox {
 	return ib
 }
 
-func (ib *Inbox) Handle(ctx consume.Context, entries ...*es.Entry) error {
+func (ib *Inbox) Consume(ctx consume.Context, entries ...*es.Entry) error {
 	return ib.QueueEntries(ctx, time.Now(), entries)
 }
 

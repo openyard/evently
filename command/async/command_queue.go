@@ -1,13 +1,13 @@
 package async
 
 import (
-	"github.com/openyard/evently/pkg/evently"
 	"log"
 	"os"
 	"sync"
 	"time"
 
 	"github.com/openyard/evently/command"
+	"github.com/openyard/evently/pkg/evently"
 )
 
 const defaultQueueTimeout = 400 * time.Millisecond

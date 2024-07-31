@@ -2,8 +2,10 @@ package consume
 
 import (
 	"fmt"
+
 	"github.com/openyard/evently/command/es"
 	"github.com/openyard/evently/event"
+
 	"go.opentelemetry.io/otel"
 )
 
@@ -17,7 +19,7 @@ func NewTracingFilter(subscriptionID string) *TracingFilter {
 	return &TracingFilter{subscriptionID: subscriptionID}
 }
 
-func (f *TracingFilter) Handle(ctx Context, entries ...*es.Entry) error {
+func (f *TracingFilter) Consume(ctx Context, entries ...*es.Entry) error {
 	tp := otel.GetTracerProvider()
 	tracer := tp.Tracer(f.subscriptionID)
 	for _, e := range entries {

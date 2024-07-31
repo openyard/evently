@@ -2,23 +2,24 @@ package consume
 
 import (
 	"fmt"
+	"sync"
+
 	"github.com/openyard/evently/command/es"
 	"github.com/openyard/evently/event"
-	"sync"
 )
 
 type Consumer interface {
-	Handle(ctx Context, entries ...*es.Entry) error
+	Consume(ctx Context, entries ...*es.Entry) error
 }
 
 type ConsumerFunc func(Context, ...*es.Entry) error
 
-func (f ConsumerFunc) Handle(ctx Context, events ...*es.Entry) error {
+func (f ConsumerFunc) Consume(ctx Context, events ...*es.Entry) error {
 	return f(ctx, events...)
 }
 
 func Consume(handler ...event.HandleFunc) {
-	DefaultConsumer.Consume(handler...)
+	DefaultConsumer.RegisterHandler(handler...)
 }
 
 var DefaultConsumer = &defaultConsumer{}
@@ -28,7 +29,7 @@ type defaultConsumer struct {
 	handler []event.HandleFunc
 }
 
-func (c *defaultConsumer) Handle(ctx Context, entries ...*es.Entry) error {
+func (c *defaultConsumer) Consume(ctx Context, entries ...*es.Entry) error {
 	c.mux.Lock()
 	defer c.mux.Unlock()
 	if len(c.handler) == 0 {
@@ -52,10 +53,10 @@ func entries2events(entries []*es.Entry) []*event.Event {
 }
 
 func (c *defaultConsumer) Consumer() Consumer {
-	return ConsumerFunc(c.Handle)
+	return ConsumerFunc(c.Consume)
 }
 
-func (c *defaultConsumer) Consume(handler ...event.HandleFunc) {
+func (c *defaultConsumer) RegisterHandler(handler ...event.HandleFunc) {
 	c.mux.Lock()
 	defer c.mux.Unlock()
 	for _, h := range handler {

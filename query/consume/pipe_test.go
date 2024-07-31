@@ -21,14 +21,14 @@ func TestConsumePipe_Handle(t *testing.T) {
 	}
 	secondConsumer := func(ctx consume.Context, e ...*es.Entry) error {
 		for _, ev := range e {
-			t.Logf("processed %+v by second handle", ev)
+			t.Logf("processed %v by second handle", ev)
 		}
 		called <- "test handle #2 called"
 		return errors.New("test-error")
 	}
 	go func() {
 		p := consume.NewPipe(firstConsumer, consume.ConsumerFunc(secondConsumer))
-		err := p.Handle(
+		err := p.Consume(
 			consume.Context{},
 			es.NewEntry(1, event.NewDomainEvent("test/event-1", "4711")),
 			es.NewEntry(2, event.NewDomainEvent("test/event-2", "4711")))
