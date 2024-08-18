@@ -1,19 +1,20 @@
 package store
 
 import (
-	"customer/internal/app/customer/report"
+	"customer/internal/app/customer/reporting"
+
 	"fmt"
 )
 
 type InMemoryCustomerStore struct {
-	directory map[string]*report.Customer
+	directory map[string]*reporting.Customer
 }
 
 func NewInMemoryCustomerStore() *InMemoryCustomerStore {
-	return &InMemoryCustomerStore{directory: make(map[string]*report.Customer)}
+	return &InMemoryCustomerStore{directory: make(map[string]*reporting.Customer)}
 }
 
-func (s *InMemoryCustomerStore) StoreCustomer(customer *report.Customer) error {
+func (s *InMemoryCustomerStore) StoreCustomer(customer *reporting.Customer) error {
 	s.directory[customer.ID] = customer
 	return nil
 }
@@ -26,11 +27,11 @@ func (s *InMemoryCustomerStore) SetCustomerState(ID, state string) error {
 	return fmt.Errorf("[%T][SetCustomerState] customer <%s> not found", s, ID)
 }
 
-func (s *InMemoryCustomerStore) ListCustomers() map[string]*report.Customer {
+func (s *InMemoryCustomerStore) ListCustomers() map[string]*reporting.Customer {
 	return s.directory
 }
 
-func (s *InMemoryCustomerStore) GetCustomerByID(ID string) *report.Customer {
+func (s *InMemoryCustomerStore) GetCustomerByID(ID string) *reporting.Customer {
 	c, found := s.directory[ID]
 	if !found {
 		return nil

@@ -1,2 +1,2 @@
-//go:generate protoc --go_out=. --go-grpc_out=. --proto_path=../../../api/proto --go_opt=paths=source_relative --go-grpc_opt=paths=source_relative customer.proto
+//go:generate protoc --go_out=. --go-grpc_out=. --proto_path=../../../api/proto --proto_path=../../../api/grpc --go_opt=paths=source_relative --go-grpc_opt=paths=source_relative customer.proto service.proto
 package grpcapi

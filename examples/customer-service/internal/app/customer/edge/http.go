@@ -1,49 +1,41 @@
 package edge
 
 import (
-	"customer/internal/app/customer/domain"
-	"customer/internal/app/customer/projection"
-	"customer/internal/app/customer/report"
-	"customer/internal/app/customer/store"
 	"encoding/json"
 	"fmt"
-	"github.com/openyard/evently/pkg/volatile"
 	"log"
 	"net/http"
-	"time"
+
+	"customer/internal/app/customer/query"
+	"customer/internal/app/customer/reporting"
 
 	"github.com/julienschmidt/httprouter"
-	"github.com/openyard/evently/query/subscription"
 )
 
 type HttpTransport struct {
-	allCustomerProjection *projection.AllCustomers
+	q *query.Service
 }
 
-func NewHttpTransport() *HttpTransport {
-	reportingStore := store.NewInMemoryCustomerStore()
-	_ = domain.SubscribeCustomerEvents(
-		subscription.NewCheckpoint("customer-events", 0, time.Now()),
-		reportingStore,
-		volatile.NewEventStore())
-	p := projection.AllCustomersProjection(reportingStore)
-	return &HttpTransport{p}
+func NewHttpTransport(reportingStore query.ReportingStore) *HttpTransport {
+	q := query.NewService(reportingStore)
+	return &HttpTransport{q}
 }
 
-func (t *HttpTransport) ListCustomers(w http.ResponseWriter, _ *http.Request, p httprouter.Params) {
-	res, err := t.allCustomerProjection.Handle(projection.ListCustomerQuery{})
+func (t *HttpTransport) ListCustomers(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+	res, err := t.q.Handle(query.ListCustomer{})
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Println(err)
 		return
 	}
 
-	b, err := json.Marshal(res.(map[string]*report.Customer))
+	b, err := json.Marshal(res.(map[string]*reporting.Customer))
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Println(err)
 		return
 	}
+	w.Header().Set("Content-Type", "application/json")
 	_, err = w.Write(b)
 	if err != nil {
 		log.Println(err)
@@ -53,7 +45,7 @@ func (t *HttpTransport) ListCustomers(w http.ResponseWriter, _ *http.Request, p 
 func (t *HttpTransport) FetchCustomerByID(w http.ResponseWriter, _ *http.Request, p httprouter.Params) {
 	ID := p.ByName("ID")
 
-	res, err := t.allCustomerProjection.Handle(projection.GetCustomerByIDQuery{ID: ID})
+	res, err := t.q.Handle(query.GetCustomerByID{ID: ID})
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Println(err)
@@ -71,7 +63,7 @@ func (t *HttpTransport) FetchCustomerByID(w http.ResponseWriter, _ *http.Request
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	b, err := json.Marshal(res.(*report.Customer))
+	b, err := json.Marshal(res.(*reporting.Customer))
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Println(err)

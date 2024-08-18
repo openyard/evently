@@ -2,9 +2,11 @@ package edge
 
 import (
 	"context"
+	"log"
+	"time"
+
 	"customer/internal/app/customer/domain"
 	"customer/pkg/genproto/grpcapi"
-	"time"
 
 	"github.com/openyard/evently/command"
 	"github.com/openyard/evently/command/async"
@@ -52,6 +54,7 @@ func (t *GrpcTransport) OnboardCustomer(ctx context.Context, request *grpcapi.On
 		0, 0, 0, 0, time.Local)
 
 	ID := uuid.NewV4().String()
+	log.Printf("onboard new customer with generated ID <%s>", ID)
 	err := t.cmdHandle(domain.OnboardCustomer(ID, request.Name, birthday, sex))
 	if err != nil {
 		return nil, err

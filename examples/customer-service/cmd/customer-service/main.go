@@ -1,8 +1,6 @@
 package main
 
 import (
-	"customer/internal/app/customer"
-	"customer/internal/app/customer/edge"
 	"flag"
 )
 
@@ -11,6 +9,7 @@ func main() {
 	httpaddr := flag.String("httpaddr", ":8206", "http listening address")
 	flag.Parse()
 
-	app := customer.NewCustomerApp(edge.WithAsyncWriteSide())
+	//edge.WithAsyncWriteSide()
+	app := NewCustomerApp()
 	app.Run(*grpcaddr, *httpaddr)
 }
