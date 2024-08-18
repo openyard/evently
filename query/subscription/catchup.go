@@ -118,6 +118,9 @@ func (s *CatchUp) start(offset uint64, transport es.Transport) {
 			inflight := transport.SubscribeWithOffset(offset, defaultBatchSize)
 			entries := <-inflight
 			evently.DEBUG("[%T][DEBUG] inflight new entries(%+v) ...", s, len(entries))
+			if len(entries) == 0 {
+				continue
+			}
 			offset += 1
 			s.commands <- &cmd{
 				entries:   entries,

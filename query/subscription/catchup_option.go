@@ -8,7 +8,7 @@ import (
 
 type CatchUpOption func(s *CatchUp)
 
-// WithTicker sets the given ticker for the CatchUp instead of consume.de
+// WithTicker sets the given ticker for the CatchUp instead of a ticker with defaultSLA (subscription.SLAShort)
 func WithTicker(ticker *time.Ticker) CatchUpOption {
 	return func(s *CatchUp) {
 		s.ticker = ticker

@@ -79,6 +79,9 @@ func (dm *DomainModel) Version() uint64 {
 }
 
 func (dm *DomainModel) apply(events ...*event.Event) {
+	if len(events) == 0 {
+		return
+	}
 	defer dm.history.Put(events[len(events)-1].OccurredAt(), dm) // save state at point in time
 	for _, e := range events {
 		dm.version++

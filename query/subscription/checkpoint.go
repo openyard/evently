@@ -55,8 +55,7 @@ func (cp *Checkpoint) MaxGlobalPos(entries ...*es.Entry) uint64 {
 	sort.Slice(entries[:], func(i, j int) bool {
 		return entries[i].GlobalPos() < entries[j].GlobalPos()
 	})
-	maxGlobalPos := entries[len(entries)-1].GlobalPos()
-	return maxGlobalPos
+	return entries[len(entries)-1].GlobalPos()
 }
 
 func (cp *Checkpoint) updatedNow() {
