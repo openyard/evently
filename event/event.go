@@ -137,7 +137,9 @@ func (e *Event) UnmarshalJSON(data []byte) error {
 	e.name = v["Name"].(string)
 	e.id = v["ID"].(string)
 	e.aggregateID = v["AggregateID"].(string)
-	e.payload = []byte(v["Payload"].(string))
+	if v["Payload"] != nil {
+		e.payload = []byte(v["Payload"].(string))
+	}
 	e.occurredAt, _ = time.Parse(time.RFC3339Nano, v["OccurredAt"].(string))
 	return nil
 }

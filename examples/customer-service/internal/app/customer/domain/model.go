@@ -6,9 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/openyard/evently/command"
 	"github.com/openyard/evently/event"
-	"github.com/openyard/evently/pkg/evently"
+	"github.com/openyard/evently/tact/cmd"
 )
 
 type State string
@@ -21,7 +20,7 @@ const (
 
 // Customer represents the domain-model in a customer domain
 type Customer struct {
-	evently.DomainModel
+	cmd.DomainModel
 	id        string
 	name      string
 	birthdate time.Time
@@ -29,17 +28,17 @@ type Customer struct {
 	state     State
 }
 
-func (c *Customer) create(command *command.Command) error {
-	var cmd onboardCustomerCommand
-	_ = json.Unmarshal(command.Payload(), &cmd)
+func (c *Customer) create(command *cmd.Command) error {
+	var occ onboardCustomerCommand
+	_ = json.Unmarshal(command.Payload(), &occ)
 	if c.Version() > 0 {
 		return fmt.Errorf("customer <%s> already exists", command.AggregateID())
 	}
-	c.Causes(onboarded(command.AggregateID(), cmd.Name, cmd.Sex, cmd.Birthdate))
+	c.Causes(onboarded(command.AggregateID(), occ.Name, occ.Sex, occ.Birthdate))
 	return nil
 }
 
-func (c *Customer) activate(command *command.Command) error {
+func (c *Customer) activate(command *cmd.Command) error {
 	if c.state == StateActive {
 		// ignore
 		return nil
@@ -48,14 +47,14 @@ func (c *Customer) activate(command *command.Command) error {
 	return nil
 }
 
-func (c *Customer) block(command *command.Command) error {
+func (c *Customer) block(command *cmd.Command) error {
 	if c.state == StateBlocked {
 		// ignore
 		return nil
 	}
-	var cmd blockCustomerCommand
-	_ = json.Unmarshal(command.Payload(), &cmd)
-	c.Causes(blocked(command.AggregateID(), strings.Split(cmd.Reason, ", ")...))
+	var bcc blockCustomerCommand
+	_ = json.Unmarshal(command.Payload(), &bcc)
+	c.Causes(blocked(command.AggregateID(), strings.Split(bcc.Reason, ", ")...))
 	return nil
 }
 

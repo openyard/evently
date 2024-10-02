@@ -9,15 +9,14 @@ import (
 	"time"
 
 	"github.com/lib/pq"
-	"github.com/openyard/evently/command/es"
 	"github.com/openyard/evently/event"
 	"github.com/openyard/evently/pkg/evently"
+	"github.com/openyard/evently/tact/es"
 )
 
 var (
-	_ es.BatchEventStore = (*EventStore)(nil)
-	_ es.EventStore      = (*EventStore)(nil)
-	_ es.Transport       = (*EventStore)(nil)
+	_ es.EventStore = (*EventStore)(nil)
+	_ es.Transport  = (*EventStore)(nil)
 )
 
 type EventStore struct {
@@ -60,35 +59,122 @@ func WithCompression() EventStoreOption {
 	}
 }
 
-func (_es *EventStore) ReadStream(stream string) (es.History, error) {
-	events := make([]*event.Event, 0)
-	rows, err := _es.queryStream(stream)
+func (_es *EventStore) Read(streams ...string) ([]es.Stream, error) {
+	res := make([]es.Stream, 0)
+	rows, err := _es.queryStreams(streams...)
 	if err != nil {
 		log.Printf("could not select stream from database: %s", err.Error())
-		return events, evently.Errorf(es.ErrReadStreamFailed, "%s", stream)
+		return res, evently.Errorf(es.ErrReadStreamsFailed, "ErrReadStreamsFailed", "%s", streams)
+	}
+	_ = rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
+	return _es.rows2streams(rows), nil
+}
+
+func (_es *EventStore) ReadAt(at time.Time, streams ...string) ([]es.Stream, error) {
+	res := make([]es.Stream, 0)
+	rows, err := _es.queryStreamsAt(at, streams...)
+	if err != nil {
+		log.Printf("could not select streams from database: %s", err.Error())
+		return res, evently.Errorf(es.ErrReadStreamsFailed, "ErrReadStreamsFailed", "%s", streams)
 	}
 	defer func() {
 		_ = rows.Close()
 	}()
-	return _es.rows2events(rows), nil
+	return _es.rows2streams(rows), nil
 }
 
-func (_es *EventStore) ReadStreamAt(stream string, at time.Time) (es.History, error) {
-	events := make([]*event.Event, 0)
-	rows, err := _es.queryStreamAt(stream, at)
-	if err != nil {
-		log.Printf("could not select stream from database: %s", err.Error())
-		return events, evently.Errorf(es.ErrReadStreamFailed, "%s", stream)
-	}
+func (_es *EventStore) Append(changes ...es.Change) error {
+	start := time.Now()
 	defer func() {
-		_ = rows.Close()
+		if os.Getenv("TRACE") != "" {
+			log.Printf("[TRACE][%T] Append: (%d) took %s", _es, len(changes), time.Since(start))
+		}
 	}()
-	return _es.rows2events(rows), nil
-}
-
-func (_es *EventStore) ReadStreams(stream []string) (map[string]es.History, error) {
-	//TODO implement me
-	panic("implement me")
+	streams := make(map[string]map[uint64][]*event.Event)
+	for _, c := range changes {
+		if _, ok := streams[c.Stream()]; !ok {
+			streams[c.Stream()] = make(map[uint64][]*event.Event)
+			streams[c.Stream()][c.ExpectedVersion()] = make([]*event.Event, 0)
+		}
+		streams[c.Stream()][c.ExpectedVersion()] = append(streams[c.Stream()][c.ExpectedVersion()], c.Events()...)
+	}
+	tx, err := _es.db.Begin()
+	if err != nil {
+		return err
+	}
+	if _es.batchMode {
+		const COLUMNS = 7
+		valueStrings := make([]string, 0)
+		valueArgs := make([]interface{}, 0)
+		var rowsExpected int64
+		i := 0
+		for stream, newEntries := range streams {
+			for expectedVersion, events := range newEntries {
+				for _, evt := range events {
+					valueStrings = append(valueStrings, fmt.Sprintf(
+						"($%d, $%d, $%d, $%d, $%d, $%d, $%d)", i*COLUMNS+1, i*COLUMNS+2, i*COLUMNS+3, i*COLUMNS+4, i*COLUMNS+5, i*COLUMNS+6, i*COLUMNS+7))
+					valueArgs = append(valueArgs, stream)
+					valueArgs = append(valueArgs, expectedVersion+uint64(i)+1)
+					valueArgs = append(valueArgs, evt.AggregateID())
+					valueArgs = append(valueArgs, evt.ID())
+					valueArgs = append(valueArgs, evt.Name())
+					valueArgs = append(valueArgs, evt.OccurredAt().UTC().Format(time.RFC3339Nano))
+					valueArgs = append(valueArgs, evt.Payload())
+					expectedVersion++
+					rowsExpected++
+					i++
+				}
+			}
+		}
+		stmt := fmt.Sprintf(batchInsertStmt, strings.Join(valueStrings, `,`))
+		result, err := tx.Exec(stmt, valueArgs...)
+		if err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+		count, err := result.RowsAffected()
+		if count != rowsExpected {
+			log.Printf("[ERROR][%T] batchInsert: insert into EVENTS effected %d rows - expected %d.", _es, count, rowsExpected)
+			return fmt.Errorf("[ERROR][%T] batchInsert: %d: %s", _es, es.ErrConcurrentChange, "ErrConcurrentChange")
+		}
+		log.Printf("[TRACE][%T] batchInsert done: streams=%d, events=%d)", _es, len(streams), count)
+	} else if _es.bulkMode {
+		var streamNames, aggregateIDs, eventIDs, eventNames, eventOccurredAt []string
+		var streamVersions []uint64
+		var eventPayloads [][]byte
+		var rowsExpected int64
+		for stream, newEntries := range streams {
+			for expectedVersion, events := range newEntries {
+				for _, evt := range events {
+					i := 0
+					streamNames = append(streamNames, stream)
+					streamVersions = append(streamVersions, expectedVersion+uint64(i))
+					aggregateIDs = append(aggregateIDs, evt.AggregateID())
+					eventIDs = append(eventIDs, evt.ID())
+					eventNames = append(eventNames, evt.Name())
+					eventOccurredAt = append(eventOccurredAt, evt.OccurredAt().UTC().Format(time.RFC3339Nano))
+					eventPayloads = append(eventPayloads, evt.Payload())
+					rowsExpected++
+				}
+			}
+		}
+		result, err := tx.Exec(bulkInsertStmt, pq.Array(streamNames), pq.Array(streamVersions), pq.Array(aggregateIDs), pq.Array(eventIDs), pq.Array(eventNames), pq.Array(eventOccurredAt), pq.Array(eventPayloads))
+		if err != nil {
+			return err
+		}
+		count, err := result.RowsAffected()
+		if count != rowsExpected {
+			log.Printf("[ERROR][%T] bulkInsert: insert into EVENTS effected %d rows - expected %d.", _es, count, rowsExpected)
+			return fmt.Errorf("[ERROR][%T] bulkInsert: %d: %s", _es, es.ErrConcurrentChange, "ErrConcurrentChange")
+		}
+		log.Printf("[TRACE][%T] bulkInsert done: streams=%d, events=%d)", _es, len(streams), count)
+	} else {
+		return evently.Errorf(es.ErrMisconfiguration, "ErrMisconfiguration", "[ERROR][%T] no batch or bulk mode set for append multiple streams", _es)
+	}
+	return tx.Commit()
 }
 
 func (_es *EventStore) AppendToStream(stream string, expectedVersion uint64, events ...*event.Event) error {
@@ -125,93 +211,10 @@ func (_es *EventStore) AppendToStream(stream string, expectedVersion uint64, eve
 	return tx.Commit()
 }
 
-func (_es *EventStore) AppendToStreams(streams map[string][]es.Change) error {
-	start := time.Now()
-	defer func() {
-		if os.Getenv("TRACE") != "" {
-			log.Printf("[TRACE][%T] AppendToStreams: (%d) took %s", _es, len(streams), time.Since(start))
-		}
-	}()
-	tx, err := _es.db.Begin()
-	if err != nil {
-		return err
-	}
-	if _es.batchMode {
-		const COLUMNS = 7
-		valueStrings := make([]string, 0)
-		valueArgs := make([]interface{}, 0)
-		var rowsExpected int64
-		i := 0
-		for stream, events := range streams {
-			for _, change := range events {
-				evt := change.Event()
-				expectedVersion := change.Version()
-				valueStrings = append(valueStrings, fmt.Sprintf(
-					"($%d, $%d, $%d, $%d, $%d, $%d, $%d)", i*COLUMNS+1, i*COLUMNS+2, i*COLUMNS+3, i*COLUMNS+4, i*COLUMNS+5, i*COLUMNS+6, i*COLUMNS+7))
-				valueArgs = append(valueArgs, stream)
-				valueArgs = append(valueArgs, expectedVersion+uint64(i)+1)
-				valueArgs = append(valueArgs, evt.AggregateID())
-				valueArgs = append(valueArgs, evt.ID())
-				valueArgs = append(valueArgs, evt.Name())
-				valueArgs = append(valueArgs, evt.OccurredAt().UTC().Format(time.RFC3339Nano))
-				valueArgs = append(valueArgs, evt.Payload())
-				expectedVersion++
-				rowsExpected++
-				i++
-			}
-		}
-		stmt := fmt.Sprintf(batchInsertStmt, strings.Join(valueStrings, `,`))
-		result, err := tx.Exec(stmt, valueArgs...)
-		if err != nil {
-			_ = tx.Rollback()
-			return err
-		}
-		count, err := result.RowsAffected()
-		if count != rowsExpected {
-			log.Printf("[ERROR][%T] batchInsert: insert into EVENTS effected %d rows - expected %d.", _es, count, rowsExpected)
-			return fmt.Errorf("[ERROR][%T] batchInsert: %d: %s", _es, es.ErrConcurrentChange, "ErrConcurrentChange")
-		}
-		log.Printf("[TRACE][%T] batchInsert done: streams=%d, events=%d)", _es, len(streams), count)
-	} else if _es.bulkMode {
-		var streamNames, aggregateIDs, eventIDs, eventNames, eventOccurredAt []string
-		var streamVersions []uint64
-		var eventPayloads [][]byte
-		var rowsExpected int64
-		for streamName, events := range streams {
-			i := 0
-			for _, change := range events {
-				evt := change.Event()
-				expectedVersion := change.Version()
-				streamNames = append(streamNames, streamName)
-				streamVersions = append(streamVersions, expectedVersion+uint64(i))
-				aggregateIDs = append(aggregateIDs, evt.AggregateID())
-				eventIDs = append(eventIDs, evt.ID())
-				eventNames = append(eventNames, evt.Name())
-				eventOccurredAt = append(eventOccurredAt, evt.OccurredAt().UTC().Format(time.RFC3339Nano))
-				eventPayloads = append(eventPayloads, evt.Payload())
-				rowsExpected++
-			}
-		}
-		result, err := tx.Exec(bulkInsertStmt, pq.Array(streamNames), pq.Array(streamVersions), pq.Array(aggregateIDs), pq.Array(eventIDs), pq.Array(eventNames), pq.Array(eventOccurredAt), pq.Array(eventPayloads))
-		if err != nil {
-			return err
-		}
-		count, err := result.RowsAffected()
-		if count != rowsExpected {
-			log.Printf("[ERROR][%T] bulkInsert: insert into EVENTS effected %d rows - expected %d.", _es, count, rowsExpected)
-			return fmt.Errorf("[ERROR][%T] bulkInsert: %d: %s", _es, es.ErrConcurrentChange, "ErrConcurrentChange")
-		}
-		log.Printf("[TRACE][%T] bulkInsert done: streams=%d, events=%d)", _es, len(streams), count)
-	} else {
-		return evently.Errorf(es.ErrMisconfiguration, "ErrMisconfiguration", "[ERROR][%T] no batch or bulk mode set for append multiple streams", _es)
-	}
-	return tx.Commit()
-}
-
-func (_es *EventStore) Subscribe(limit uint16) chan []*es.Entry {
+func (_es *EventStore) Subscribe(limit uint16) (uint64, chan []*es.Entry) {
 	entries := make(chan []*es.Entry)
 	// TODO fetch entries
-	return entries
+	return 0, entries
 }
 
 func (_es *EventStore) SubscribeWithOffset(offset uint64, limit uint16) chan []*es.Entry {
@@ -226,20 +229,21 @@ func (_es *EventStore) SubscribeWithID(ID string, limit uint16) chan []*es.Entry
 	return entries
 }
 
-func (_es *EventStore) queryStream(name string) (*sql.Rows, error) {
+func (_es *EventStore) queryStreams(name ...string) (*sql.Rows, error) {
 	return _es.db.Query("select GLOBAL_POSITION, STREAM_NAME, AGGREGATE_ID, EVENT_ID, EVENT_NAME, EVENT_OCCURRED_AT, EVENT "+
-		"from EVENTS where STREAM_NAME = $1 order by EVENT_STAMP ASC", name,
+		"from EVENTS where STREAM_NAME in (SELECT unnest($1::text[])) order by EVENT_OCCURRED_AT ASC", name,
 	)
 }
 
-func (_es *EventStore) queryStreamAt(name string, upTo time.Time) (*sql.Rows, error) {
+func (_es *EventStore) queryStreamsAt(upTo time.Time, name ...string) (*sql.Rows, error) {
 	return _es.db.Query("select GLOBAL_POSITION, STREAM_NAME, AGGREGATE_ID, EVENT_ID, EVENT_NAME, EVENT_OCCURRED_AT, EVENT "+
-		"from EVENTS where STREAM_NAME = $1 and EVENT_OCCURRED_AT < $2 order by EVENT_STAMP ASC", name, upTo.Format(time.RFC3339Nano),
+		"from EVENTS where STREAM_NAME in (SELECT unnest($1::text[])) and EVENT_OCCURRED_AT < $2 order by EVENT_OCCURRED_AT ASC", name, upTo.Format(time.RFC3339Nano),
 	)
 }
 
-func (_es *EventStore) rows2events(rows *sql.Rows) []*event.Event {
-	stream := make([]*event.Event, 0)
+func (_es *EventStore) rows2streams(rows *sql.Rows) []es.Stream {
+	streams := make([]es.Stream, 0)
+	events := make(map[string][]*event.Event)
 	for rows.Next() {
 		var (
 			streamID    string
@@ -251,22 +255,29 @@ func (_es *EventStore) rows2events(rows *sql.Rows) []*event.Event {
 		)
 		if err := rows.Scan(&streamID, &aggregateID, &ID, &name, &timestamp, &payload); err != nil {
 			log.Printf("could not fetch events from database: %s", err.Error())
-			return stream
+			return streams
 		}
 		occurredAt, err := time.Parse(time.RFC3339Nano, timestamp)
 		if err != nil {
-			log.Printf("[%T] rows2events: couldn't parse timestamp(%s), err: %s", _es, timestamp, err)
-			return stream
+			log.Printf("[%T] rows2streams: couldn't parse timestamp(%s), err: %s", _es, timestamp, err)
+			return streams
+		}
+		if _, ok := events[streamID]; !ok {
+			// first event of stream
+			events[streamID] = make([]*event.Event, 0)
 		}
 		opts := []event.Option{event.WithID(ID), event.WithEventType(event.DomainEvent), event.WithPayload(payload)}
-		stream = append(stream, event.NewEventAt(name, aggregateID, occurredAt, opts...))
+		events[streamID] = append(events[streamID], event.NewEventAt(name, aggregateID, occurredAt, opts...))
 	}
-	return stream
+	for k, v := range events {
+		streams = append(streams, es.BuildStream(k, v...))
+	}
+	return streams
 }
 
 func (_es *EventStore) saveEvent(tx *sql.Tx, stream string, event *event.Event, expectedVersion uint64) error {
 	result, err := tx.Exec(
-		"insert into EVENTS (STREAM_NAME, STREAM_VERSION, AGGREGATE_ID, EVENT_ID, EVENT_NAME, EVENT_OCCURRED_AT, EVENT) values ($1, $2, $3, $4, $5, $6, $7)",
+		"insert into EVENTS (STREAM_NAME, STREAM_POSITION, AGGREGATE_ID, EVENT_ID, EVENT_NAME, EVENT_OCCURRED_AT, EVENT) values ($1, $2, $3, $4, $5, $6, $7)",
 		stream, expectedVersion+1, event.AggregateID(), event.ID(), event.Name(), event.OccurredAt().Format(time.RFC3339Nano), event.Payload(),
 	)
 	if err != nil {
@@ -347,7 +358,7 @@ var esChanges = ChangeSet{
 		`create table if not exists EVENTS (
     			GLOBAL_POSITION bigint generated always as identity,
 				STREAM_NAME varchar(99) not null,
-				STREAM_VERSION bigint not null,
+				STREAM_POSITION bigint not null,
 				AGGREGATE_ID varchar(99) not null,
 				EVENT_ID varchar(99) not null,
 				EVENT_NAME varchar(99) not null,
@@ -355,187 +366,13 @@ var esChanges = ChangeSet{
 				EVENT bytea not null,
 				EVENT_JSONB jsonb,
     			EVENT_META_DATA jsonb,
-                constraint PK_EVENTS primary key (STREAM_NAME, STREAM_VERSION)
+                constraint PK_EVENTS primary key (STREAM_NAME, STREAM_POSITION)
 			)`,
 	},
 }
 
 const (
-	batchInsertStmt = `insert into EVENTS(STREAM_NAME, STREAM_VERSION, AGGREGATE_ID, EVENT_ID, EVENT_NAME, EVENT_OCCURRED_AT, EVENT) values %s`
-	bulkInsertStmt  = `insert into EVENTS(STREAM_NAME, STREAM_VERSION, AGGREGATE_ID, EVENT_ID, EVENT_NAME, EVENT_OCCURRED_AT, EVENT) (
+	batchInsertStmt = `insert into EVENTS(STREAM_NAME, STREAM_POSITION, AGGREGATE_ID, EVENT_ID, EVENT_NAME, EVENT_OCCURRED_AT, EVENT) values %s`
+	bulkInsertStmt  = `insert into EVENTS(STREAM_NAME, STREAM_POSITION, AGGREGATE_ID, EVENT_ID, EVENT_NAME, EVENT_OCCURRED_AT, EVENT) (
     					select * from unnest($1::text[], $2::int[], $3::text[], $4::text[], $5::text[], $6::text[], $7::bytea[]))`
 )
-
-/*
-package pgstore
-
-import (
-	"database/sql"
-	"fmt"
-	"log"
-	"time"
-
-	"scm.sys.flatex.com/golang/cqrs/v2"
-	"scm.sys.flatex.com/golang/cqrs/v2/es"
-	"scm.sys.flatex.com/golang/db/ddl"
-)
-
-type PgStore struct {
-	db  *sql.DB
-	seq uint64
-}
-
-func New(db *sql.DB) *PgStore {
-	change := ddl.NewChange()
-	pg := ddl.NewPostgres(db)
-	if err := change.Install(pg, changes); err != nil {
-		panic(err)
-	}
-	return &PgStore{db: db}
-}
-
-func (_es *PgStore) ReadStream(name string) ([]*cqrs.Event, error) {
-	events := make([]*cqrs.Event, 0)
-	rows, err := _es.queryStream(name)
-	if err != nil {
-		log.Printf("could not select stream from database: %s", err.Error())
-		return events, es.Errorf(es.ErrReadStreamFailed, "%s", name)
-	}
-	defer rows.Close()
-	return _es.rows2events(rows), nil
-}
-
-func (_es *PgStore) AppendToStream(name string, events []*cqrs.Event, expectedVersion uint64) error {
-	tx, err := _es.db.Begin()
-	if err != nil {
-		return err
-	}
-	for _, event := range events {
-		if err := _es.saveEvent(tx, name, event, expectedVersion); err != nil {
-			_ = tx.Rollback()
-			return err
-		}
-		expectedVersion++
-	}
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (_es *PgStore) ReleaseEvent(e *cqrs.Event) {
-	tx, err := _es.db.Begin()
-	if err != nil {
-		return
-	}
-	if err := _es.releaseEvent(tx, e.ID); err != nil {
-		_ = tx.Rollback()
-		return
-	}
-
-	_ = tx.Commit()
-}
-
-func (_es *PgStore) listen() []*cqrs.Event {
-	events := make([]*cqrs.Event, 0)
-	rows, err := _es.queryUnpublished()
-	if err != nil {
-		log.Printf("could not select unpublished events from database: %s", err.Error())
-		return events
-	}
-	defer rows.Close()
-	for _, e := range _es.rows2events(rows) {
-		events = append(events, e)
-	}
-	return events
-}
-
-func (_es *PgStore) queryStream(name string) (*sql.Rows, error) {
-	return _es.db.Query("select STREAM_NAME, AGGREGATE_ID, EVENT_ID, EVENT_NAME, EVENT_STAMP, EVENT "+
-		"from EVENTS where STREAM_NAME = $1 order by EVENT_STAMP ASC", name,
-	)
-}
-
-func (_es *PgStore) queryUnpublished() (*sql.Rows, error) {
-	return _es.db.Query("select STREAM_NAME, AGGREGATE_ID, EVENT_ID, EVENT_NAME, EVENT_STAMP, EVENT " +
-		"from EVENTS where EVENT_PUBLISHED is null order by EVENT_STAMP ASC",
-	)
-}
-
-func (_es *PgStore) rows2events(rows *sql.Rows) []*cqrs.Event {
-	stream := make([]*cqrs.Event, 0)
-	for rows.Next() {
-		var (
-			streamID    string
-			aggregateID string
-			ID          string
-			name        string
-			timestamp   string
-			payload     []byte
-		)
-		if err := rows.Scan(&streamID, &aggregateID, &ID, &name, &timestamp, &payload); err != nil {
-			log.Printf("could not fetch events from database: %s", err.Error())
-			return stream
-		}
-		stamp, _ := time.Parse(time.RFC3339Nano, timestamp)
-		stream = append(stream, &cqrs.Event{Name: name, ID: ID, AggregateID: streamID, Stamp: stamp, Payload: payload})
-	}
-	return stream
-}
-
-func (_es *PgStore) saveEvent(tx *sql.Tx, name string, event *cqrs.Event, expectedVersion uint64) error {
-	result, err := tx.Exec(
-		"insert into EVENTS (STREAM_NAME, STREAM_VERSION, AGGREGATE_ID, EVENT_ID, EVENT_NAME, EVENT_STAMP, EVENT) values ($1, $2, $3, $4, $5, $6, $7)",
-		name, expectedVersion+1, event.AggregateID, event.ID, event.Name, event.Stamp.Format(time.RFC3339Nano), event.Payload,
-	)
-	if err != nil {
-		return err
-	}
-	count, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if count != 1 {
-		log.Printf("insert into EVENTS effected %d rows - exepcted 1.", count)
-		return fmt.Errorf("saveEvent: %s", "cqrs.ErrOptimisticLockFailed")
-	}
-	return nil
-}
-
-func (_es *PgStore) releaseEvent(tx *sql.Tx, ID string) error {
-	result, err := tx.Exec(
-		"update EVENTS set EVENT_PUBLISHED = $1 where EVENT_ID = $2 and EVENT_PUBLISHED is null",
-		time.Now().UTC().Format(time.RFC3339Nano), ID,
-	)
-	if err != nil {
-		return err
-	}
-	count, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if count != 1 {
-		log.Printf("update EVENTS effected %d rows - exepcted 1.", count)
-		return fmt.Errorf("releaseEvent: %s", "cqrs.ErrOptimisticLockFailed")
-	}
-	return nil
-}
-
-var changes = ddl.ChangeSet{
-	"2019-10-22-001_create_events": {
-		ddl.POSTGRES: {
-			`create table if not exists EVENTS (
-				STREAM_NAME varchar(99) not null,
-				STREAM_VERSION bigint not null,
-				AGGREGATE_ID varchar(99) not null,
-				EVENT_ID varchar(99) not null,
-				EVENT_NAME varchar(99) not null,
-				EVENT_STAMP varchar(35) not null,
-				EVENT_PUBLISHED varchar(35) null,
-				EVENT bytea not null,
-                constraint PK_EVENTS primary key (STREAM_NAME, STREAM_VERSION)
-			)`,
-		},
-	},
-}
-*/

@@ -1,12 +1,10 @@
-//go:build integration
-// +build integration
-
 package pg_test
 
 import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/openyard/evently/tact/es"
 	"log"
 	"os"
 	"testing"
@@ -14,7 +12,6 @@ import (
 
 	_ "github.com/lib/pq"
 
-	"github.com/openyard/evently/command/es"
 	"github.com/openyard/evently/event"
 	"github.com/openyard/evently/pkg/pg"
 	"github.com/testcontainers/testcontainers-go"
@@ -73,10 +70,10 @@ func TestEventStore_AppendToStreamBatch(t *testing.T) {
 	}
 	t.Logf("using connection(%s)", connectionString)
 	_es := pg.NewEventStore(_db, pg.WithBatchMode())
-	err = _es.AppendToStream("my-stream", 0,
+	err = _es.Append(es.NewChange("my-stream", 0,
 		event.NewDomainEvent("my-first-event", "4711"),
 		event.NewDomainEvent("my-second-event", "4711"),
-		event.NewDomainEvent("my-third-event", "4711"))
+		event.NewDomainEvent("my-third-event", "4711")))
 	if err != nil {
 		t.Error(err)
 	}
@@ -129,8 +126,7 @@ func TestEventStore_AppendToStreamsBatch(t *testing.T) {
 	}
 	t.Logf("using connection(%s)", connectionString)
 	_es := pg.NewEventStore(_db, pg.WithBatchMode())
-	streams := createStreams()
-	err = _es.AppendToStreams(streams)
+	err = _es.Append(createChanges()...)
 	if err != nil {
 		t.Error(err)
 	}
@@ -155,25 +151,23 @@ func TestEventStore_AppendToStreamsBulk(t *testing.T) {
 	}
 	t.Logf("using connection(%s)", connectionString)
 	_es := pg.NewEventStore(_db, pg.WithBulkMode())
-	streams := createStreams()
-	err = _es.AppendToStreams(streams)
+	err = _es.Append(createChanges()...)
 	if err != nil {
 		t.Error(err)
 	}
 	printEvents(t, err, _db)
 }
 
-func createStreams() map[string][]es.Change {
-	streams := make(map[string][]es.Change)
+func createChanges() []es.Change {
+	changes := make([]es.Change, 0, 3)
 	for i := 0; i < 1000; i++ {
-		changes := []es.Change{
-			es.NewChange(1, event.NewDomainEvent("my-first-event", "4711")),
-			es.NewChange(2, event.NewDomainEvent("my-second-event", "4711")),
-			es.NewChange(3, event.NewDomainEvent("my-third-event", "4711")),
-		}
-		streams[fmt.Sprintf("my-stream-%d", i+1)] = changes
+		changes = append(changes, []es.Change{
+			es.NewChange(fmt.Sprintf("my-stream-%d", i+1), 1, event.NewDomainEvent("my-first-event", "4711")),
+			es.NewChange(fmt.Sprintf("my-stream-%d", i+1), 2, event.NewDomainEvent("my-second-event", "4711")),
+			es.NewChange(fmt.Sprintf("my-stream-%d", i+1), 3, event.NewDomainEvent("my-third-event", "4711")),
+		}...)
 	}
-	return streams
+	return changes
 }
 
 func printEvents(t *testing.T, err error, _db *sql.DB) {

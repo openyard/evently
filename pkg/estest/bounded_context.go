@@ -7,18 +7,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openyard/evently/command"
 	"github.com/openyard/evently/event"
-	"github.com/openyard/evently/pkg/evently"
+	"github.com/openyard/evently/tact/cmd"
 )
 
 type BoundedContext struct {
 	tb testing.TB
-	dm *evently.DomainModel
+	dm *cmd.DomainModel
 }
 
 // NewBoundedContext returns an initialized *estest.BoundedContext with given domain-model
-func NewBoundedContext(tb testing.TB, dm *evently.DomainModel) *BoundedContext {
+func NewBoundedContext(tb testing.TB, dm *cmd.DomainModel) *BoundedContext {
 	tb.Helper()
 	return &BoundedContext{tb: tb, dm: dm}
 }
@@ -29,7 +28,7 @@ func (bc *BoundedContext) Given(events ...*event.Event) {
 	bc.dm.Load(events)
 }
 
-func (bc *BoundedContext) When(c *command.Command) (string, time.Time) {
+func (bc *BoundedContext) When(c *cmd.Command) (string, time.Time) {
 	bc.tb.Helper()
 	changes, err := bc.dm.Execute(c)
 	if err != nil {

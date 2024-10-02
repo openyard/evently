@@ -5,9 +5,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/openyard/evently/command/es"
 	"github.com/openyard/evently/event"
 	"github.com/openyard/evently/pkg/evently"
+	"github.com/openyard/evently/tact/es"
 )
 
 const defaultOffset = 0
@@ -40,45 +40,62 @@ func NewEventStore() *EventStore {
 	}
 }
 
-func (_es *EventStore) AppendToStream(name string, expectedVersion uint64, events ...*event.Event) error {
+func (_es *EventStore) Append(changes ...es.Change) error {
 	_es.Lock()
 	defer _es.Unlock()
-	history := _es.streams[name]
-	if uint64(len(history)) != expectedVersion {
-		return evently.Errorf(es.ErrConcurrentChange, "ErrConcurrentChange", name).
-			CausedBy(fmt.Errorf("concurrent change detected - expectedVersion: %d, actualVersion: %d", expectedVersion, len(history)))
-	}
-	_es.streams[name] = append(history, events...)
-	for _, e := range events {
-		_es.log = append(_es.log, es.NewEntry(uint64(len(_es.log)), e))
+	for _, c := range changes {
+		history := _es.streams[c.Stream()]
+		if uint64(len(history)) != c.ExpectedVersion() {
+			return evently.Errorf(es.ErrConcurrentChange, "ErrConcurrentChange", c.Stream()).
+				CausedBy(fmt.Errorf("concurrent change detected - expectedVersion: %d, actualVersion: %d", c.ExpectedVersion(), len(history)))
+		}
+		_es.streams[c.Stream()] = append(history, c.Events()...)
+		for _, e := range c.Events() {
+			_es.log = append(_es.log, es.NewEntry(uint64(len(_es.log)), e))
+		}
 	}
 	return nil
+}
+
+func (_es *EventStore) Read(streams ...string) ([]es.Stream, error) {
+	_es.RLock()
+	defer _es.RUnlock()
+	result := make([]es.Stream, 0)
+	for _, name := range streams {
+		if events, ok := _es.streams[name]; ok {
+			result = append(result, es.BuildStream(name, events...))
+		}
+	}
+	return result, nil
+}
+
+func (_es *EventStore) ReadAt(at time.Time, streams ...string) ([]es.Stream, error) {
+	_es.RLock()
+	defer _es.RUnlock()
+	result := make([]es.Stream, 0)
+	for _, name := range streams {
+		if events, ok := _es.streams[name]; ok {
+			var elems []*event.Event
+			for _, e := range events {
+				if e.OccurredAt().Before(at) {
+					elems = append(elems, e)
+				}
+			}
+			result = append(result, es.BuildStream(name, elems...))
+		}
+	}
+	return result, nil
 }
 
 func (_es *EventStore) Log() []*es.Entry {
 	return _es.log
 }
 
-func (_es *EventStore) ReadStream(name string) (es.History, error) {
-	_es.RLock()
-	defer _es.RUnlock()
-	return _es.streams[name], nil
-}
-
-func (_es *EventStore) ReadStreamAt(name string, at time.Time) (es.History, error) {
-	_es.RLock()
-	defer _es.RUnlock()
-	hist := make(es.History, 0)
-	for _, e := range _es.streams[name] {
-		if e.OccurredAt().Before(at) {
-			hist = append(hist, e)
-		}
-	}
-	return hist, nil
-}
-
-func (_es *EventStore) Subscribe(limit uint16) chan []*es.Entry {
-	return _es.SubscribeWithOffset(defaultOffset, limit)
+func (_es *EventStore) Subscribe(limit uint16) (uint64, chan []*es.Entry) {
+	currentPos := uint64(len(_es.log))
+	entries := make(chan []*es.Entry)
+	go _es.receiveEntries(currentPos, limit, entries)
+	return currentPos, entries
 }
 
 func (_es *EventStore) SubscribeWithOffset(offset uint64, limit uint16) chan []*es.Entry {
@@ -88,7 +105,7 @@ func (_es *EventStore) SubscribeWithOffset(offset uint64, limit uint16) chan []*
 }
 
 func (_es *EventStore) SubscribeWithID(_ string, _ uint16) chan []*es.Entry {
-	panic(fmt.Sprintf("[%T][FATAL] subscription with ID not supported", _es))
+	panic(fmt.Sprintf("[FATAL][%T] subscription with ID not supported", _es))
 }
 
 func (_es *EventStore) receiveEntries(offset uint64, limit uint16, next chan []*es.Entry) {

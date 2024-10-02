@@ -1,9 +1,9 @@
 package store
 
 import (
-	"customer/internal/app/customer/reporting"
-
 	"fmt"
+
+	"customer/internal/app/customer/reporting"
 )
 
 type InMemoryCustomerStore struct {

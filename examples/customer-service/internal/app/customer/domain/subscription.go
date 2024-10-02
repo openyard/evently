@@ -1,25 +1,38 @@
 package domain
 
 import (
-	"github.com/openyard/evently/command/es"
-	"github.com/openyard/evently/query/consume"
-	"github.com/openyard/evently/query/subscription"
+	"log"
+
+	"github.com/openyard/evently/async/query/consume"
+	"github.com/openyard/evently/async/query/subscription"
+	"github.com/openyard/evently/pkg/evently"
+	"github.com/openyard/evently/tact/es"
 )
 
 func SubscribeCustomerEvents(
-	checkpoint *subscription.Checkpoint,
+	checkpointStore subscription.CheckpointStore,
 	reportingStore ReportingStore,
-	transport es.Transport) *subscription.CatchUp {
+	subscriber es.Transport) *subscription.CatchUp {
 
 	p := &allCustomersProjection{reportingStore: reportingStore}
 	consume.Consume(p.Handle) // register handle at defaultConsumer
+	tf := consume.NewTracingFilter("customer-events")
+	cf := consume.NewConcurrentFilter(
+		func(entries ...*es.Entry) {
+			evently.DEBUG("[DEBUG] ackFunc - update checkpoint")
+			checkpoint := checkpointStore.GetLatestCheckpoint("customer-events")
+			checkpoint.MaxGlobalPos(entries...)
+			checkpointStore.StoreCheckpoint(checkpoint)
+		},
+		func(args ...*es.Entry) {
+			log.Printf("[ERROR] nackFunc - nack entries %+v", args)
+		}).WithConsumer(tf)
+	cp := consume.NewPipe(cf.Consume, consume.DefaultConsumer)
 
 	opts := []subscription.CatchUpOption{
-		subscription.WithAckFunc(func(entries ...*es.Entry) {
-			checkpoint.Update(checkpoint.MaxGlobalPos(entries...))
-		}),
+		subscription.WithConsumer(cp),
 	}
-	s := subscription.NewCatchUpSubscription("customer-events", 0, transport, opts...)
+	s := subscription.NewCatchUp("customer-events", 0, subscriber, opts...)
 	defer s.Listen()
 	return s
 }

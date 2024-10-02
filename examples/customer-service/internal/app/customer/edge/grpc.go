@@ -8,9 +8,9 @@ import (
 	"customer/internal/app/customer/domain"
 	"customer/pkg/genproto/grpcapi"
 
-	"github.com/openyard/evently/command"
-	"github.com/openyard/evently/command/async"
+	"github.com/openyard/evently/async"
 	"github.com/openyard/evently/pkg/uuid"
+	"github.com/openyard/evently/tact/cmd"
 )
 
 var _ grpcapi.CustomerServer = (*GrpcTransport)(nil)
@@ -19,10 +19,10 @@ type GrpcTransportOption func(a *GrpcTransport)
 
 type GrpcTransport struct {
 	grpcapi.UnimplementedCustomerServer
-	cmdHandle command.HandleFunc
+	cmdHandle cmd.HandleFunc
 }
 
-func NewGrpcTransport(cmdSvc command.HandleFunc, opts ...GrpcTransportOption) *GrpcTransport {
+func NewGrpcTransport(cmdSvc cmd.HandleFunc, opts ...GrpcTransportOption) *GrpcTransport {
 	t := &GrpcTransport{
 		cmdHandle: cmdSvc,
 	}
@@ -54,7 +54,7 @@ func (t *GrpcTransport) OnboardCustomer(ctx context.Context, request *grpcapi.On
 		0, 0, 0, 0, time.Local)
 
 	ID := uuid.NewV4().String()
-	log.Printf("onboard new customer with generated ID <%s>", ID)
+	log.Printf("[INFO][%T] OnboardCustomer: new customer with generated ID <%s>", t, ID)
 	err := t.cmdHandle(domain.OnboardCustomer(ID, request.Name, birthday, sex))
 	if err != nil {
 		return nil, err

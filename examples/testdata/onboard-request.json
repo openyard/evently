@@ -1,0 +1,9 @@
+{
+	"name": "John Doe",
+	"birthdate": {
+		"year":1980,
+		"month":1,
+		"day":2
+	},
+	"sex": "SEX_MALE"
+}

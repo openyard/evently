@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openyard/evently/command/es"
+	"github.com/openyard/evently/async/query/consume"
 	"github.com/openyard/evently/event"
 	"github.com/openyard/evently/pkg/volatile"
-	"github.com/openyard/evently/query/consume"
+	"github.com/openyard/evently/tact/es"
 	"github.com/stretchr/testify/assert"
 )
 

@@ -3,7 +3,7 @@ package pg
 import (
 	"database/sql"
 
-	"github.com/openyard/evently/query/subscription"
+	"github.com/openyard/evently/async/query/subscription"
 )
 
 var _ subscription.CheckpointStore = (*CheckpointStore)(nil)

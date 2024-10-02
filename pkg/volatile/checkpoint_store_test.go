@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openyard/evently/async/query/subscription"
 	"github.com/openyard/evently/pkg/volatile"
-	"github.com/openyard/evently/query/subscription"
 	"github.com/stretchr/testify/assert"
 )
 

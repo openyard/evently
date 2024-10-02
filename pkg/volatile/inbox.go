@@ -1,13 +1,13 @@
 package volatile
 
 import (
+	"github.com/openyard/evently/tact/es"
 	"log"
 	"sync"
 	"time"
 
-	"github.com/openyard/evently/command/es"
+	"github.com/openyard/evently/async/query/consume"
 	"github.com/openyard/evently/pkg/uuid"
-	"github.com/openyard/evently/query/consume"
 )
 
 const defaultBufferSize = 128

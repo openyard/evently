@@ -3,8 +3,8 @@ package query
 import (
 	"reflect"
 
+	q "github.com/openyard/evently/async/query"
 	"github.com/openyard/evently/pkg/evently"
-	q "github.com/openyard/evently/query"
 )
 
 type Service struct {

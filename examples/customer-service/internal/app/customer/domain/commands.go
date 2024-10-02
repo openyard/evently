@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/openyard/evently/command"
+	"github.com/openyard/evently/tact/cmd"
 )
 
 const (
@@ -20,25 +20,25 @@ type onboardCustomerCommand struct {
 	Sex       byte
 }
 
-func OnboardCustomer(aggregateID, name string, birthdate time.Time, sex byte) *command.Command {
+func OnboardCustomer(aggregateID, name string, birthdate time.Time, sex byte) *cmd.Command {
 	payload, _ := json.Marshal(&onboardCustomerCommand{name, birthdate, sex})
-	return command.New(onboardCustomerCommandName, aggregateID, command.WithPayload(payload))
+	return cmd.New(onboardCustomerCommandName, aggregateID, cmd.WithPayload(payload))
 }
 
 type activateCustomerCommand struct{}
 
-func ActivateCustomer(aggregateID string) *command.Command {
-	return command.New(activateCustomerCommandName, aggregateID)
+func ActivateCustomer(aggregateID string) *cmd.Command {
+	return cmd.New(activateCustomerCommandName, aggregateID)
 }
 
 type blockCustomerCommand struct {
 	Reason string // optional
 }
 
-func BlockCustomer(aggregateID string, reason ...string) *command.Command {
+func BlockCustomer(aggregateID string, reason ...string) *cmd.Command {
 	if len(reason) > 0 {
 		payload, _ := json.Marshal(&blockCustomerCommand{strings.Join(reason, ", ")})
-		return command.New(blockCustomerCommandName, aggregateID, command.WithPayload(payload))
+		return cmd.New(blockCustomerCommandName, aggregateID, cmd.WithPayload(payload))
 	}
-	return command.New(blockCustomerCommandName, aggregateID)
+	return cmd.New(blockCustomerCommandName, aggregateID)
 }
