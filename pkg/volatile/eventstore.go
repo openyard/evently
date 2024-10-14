@@ -91,11 +91,11 @@ func (_es *EventStore) Log() []*es.Entry {
 	return _es.log
 }
 
-func (_es *EventStore) Subscribe(limit uint16) (uint64, chan []*es.Entry) {
+func (_es *EventStore) Subscribe(limit uint16) chan []*es.Entry {
 	currentPos := uint64(len(_es.log))
 	entries := make(chan []*es.Entry)
 	go _es.receiveEntries(currentPos, limit, entries)
-	return currentPos, entries
+	return entries
 }
 
 func (_es *EventStore) SubscribeWithOffset(offset uint64, limit uint16) chan []*es.Entry {

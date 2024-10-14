@@ -37,7 +37,7 @@ type Transition func(e *event.Event)
 type Transport interface {
 	// Subscribe starts to listen for new events
 	// You use this method most likely for volatile-subscriptions to receive only new events from now on
-	Subscribe(limit uint16) (uint64, chan []*Entry)
+	Subscribe(limit uint16) chan []*Entry
 	// SubscribeWithID fetches remaining events based on given ID and listen for new events
 	// You use this method most likely for persistent-subscriptions if the underlying Transport (EventStore) supports it
 	SubscribeWithID(ID string, limit uint16) chan []*Entry

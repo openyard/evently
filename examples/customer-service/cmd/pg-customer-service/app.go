@@ -3,7 +3,6 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	"github.com/openyard/evently/tact/cmd"
 	"log"
 	"net"
 	"net/http"
@@ -18,6 +17,7 @@ import (
 	"github.com/openyard/evently/async/query/subscription"
 	"github.com/openyard/evently/pkg/config"
 	"github.com/openyard/evently/pkg/pg"
+	"github.com/openyard/evently/tact/cmd"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/julienschmidt/httprouter"

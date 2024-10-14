@@ -1,14 +1,14 @@
 package main
 
 import (
+	"log"
+	"net"
+	"net/http"
+
 	"customer/internal/app/customer/domain"
 	"customer/internal/app/customer/edge"
 	"customer/internal/app/customer/store"
 	"customer/pkg/genproto/grpcapi"
-
-	"log"
-	"net"
-	"net/http"
 
 	"github.com/julienschmidt/httprouter"
 	"github.com/openyard/evently/async/query/subscription"

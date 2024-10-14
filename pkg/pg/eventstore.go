@@ -148,8 +148,8 @@ func (_es *EventStore) Append(changes ...es.Change) error {
 		var rowsExpected int64
 		for stream, newEntries := range streams {
 			for expectedVersion, events := range newEntries {
+				i := 0
 				for _, evt := range events {
-					i := 0
 					streamNames = append(streamNames, stream)
 					streamVersions = append(streamVersions, expectedVersion+uint64(i))
 					aggregateIDs = append(aggregateIDs, evt.AggregateID())
@@ -158,6 +158,7 @@ func (_es *EventStore) Append(changes ...es.Change) error {
 					eventOccurredAt = append(eventOccurredAt, evt.OccurredAt().UTC().Format(time.RFC3339Nano))
 					eventPayloads = append(eventPayloads, evt.Payload())
 					rowsExpected++
+					i++
 				}
 			}
 		}
@@ -211,22 +212,26 @@ func (_es *EventStore) AppendToStream(stream string, expectedVersion uint64, eve
 	return tx.Commit()
 }
 
-func (_es *EventStore) Subscribe(limit uint16) (uint64, chan []*es.Entry) {
-	entries := make(chan []*es.Entry)
-	// TODO fetch entries
-	return 0, entries
+func (_es *EventStore) Subscribe(limit uint16) chan []*es.Entry {
+	return _es.SubscribeWithOffset(0, limit) // use maxPos()
 }
 
 func (_es *EventStore) SubscribeWithOffset(offset uint64, limit uint16) chan []*es.Entry {
-	entries := make(chan []*es.Entry)
-	// TODO fetch entries
-	return entries
+	evently.DEBUG("SubscribeWithOffset: offset=%d, limit=%d", offset, limit)
+	res := make(chan []*es.Entry)
+	rows, err := _es.queryEntries(offset, limit)
+	if err != nil {
+		log.Printf("[ERROR]\t%T.Subscribe - could not select stream from database: %s", _es, err.Error())
+		return res
+	}
+	go _es.rows2entries(rows, res, func() error {
+		return rows.Close()
+	})
+	return res
 }
 
 func (_es *EventStore) SubscribeWithID(ID string, limit uint16) chan []*es.Entry {
-	entries := make(chan []*es.Entry)
-	// TODO fetch entries
-	return entries
+	panic("persistent subscriptions not supported yet")
 }
 
 func (_es *EventStore) queryStreams(name ...string) (*sql.Rows, error) {
@@ -238,6 +243,12 @@ func (_es *EventStore) queryStreams(name ...string) (*sql.Rows, error) {
 func (_es *EventStore) queryStreamsAt(upTo time.Time, name ...string) (*sql.Rows, error) {
 	return _es.db.Query("select GLOBAL_POSITION, STREAM_NAME, AGGREGATE_ID, EVENT_ID, EVENT_NAME, EVENT_OCCURRED_AT, EVENT "+
 		"from EVENTS where STREAM_NAME in (SELECT unnest($1::text[])) and EVENT_OCCURRED_AT < $2 order by EVENT_OCCURRED_AT ASC", name, upTo.Format(time.RFC3339Nano),
+	)
+}
+
+func (_es *EventStore) queryEntries(offset uint64, limit uint16) (*sql.Rows, error) {
+	return _es.db.Query("select GLOBAL_POSITION, AGGREGATE_ID, EVENT_ID, EVENT_NAME, EVENT_OCCURRED_AT, EVENT "+
+		"from EVENTS where GLOBAL_POSITION >= $1 order by EVENT_OCCURRED_AT ASC limit $2", offset, limit,
 	)
 }
 
@@ -254,12 +265,12 @@ func (_es *EventStore) rows2streams(rows *sql.Rows) []es.Stream {
 			payload     []byte
 		)
 		if err := rows.Scan(&streamID, &aggregateID, &ID, &name, &timestamp, &payload); err != nil {
-			log.Printf("could not fetch events from database: %s", err.Error())
+			log.Printf("[ERROR]\t%T.rows2streams: could not fetch events from database: %s", _es, err.Error())
 			return streams
 		}
 		occurredAt, err := time.Parse(time.RFC3339Nano, timestamp)
 		if err != nil {
-			log.Printf("[%T] rows2streams: couldn't parse timestamp(%s), err: %s", _es, timestamp, err)
+			log.Printf("[ERROR]\t%T.rows2streams: couldn't parse timestamp(%s), err: %s", _es, timestamp, err)
 			return streams
 		}
 		if _, ok := events[streamID]; !ok {
@@ -273,6 +284,38 @@ func (_es *EventStore) rows2streams(rows *sql.Rows) []es.Stream {
 		streams = append(streams, es.BuildStream(k, v...))
 	}
 	return streams
+}
+
+func (_es *EventStore) rows2entries(rows *sql.Rows, res chan []*es.Entry, onFinished func() error) {
+	defer onFinished()
+	events := make(map[uint64]*event.Event)
+	for rows.Next() {
+		var (
+			globalPos   uint64
+			aggregateID string
+			ID          string
+			name        string
+			timestamp   string
+			payload     []byte
+		)
+		if err := rows.Scan(&globalPos, &aggregateID, &ID, &name, &timestamp, &payload); err != nil {
+			log.Printf("[ERROR]\t%T.rows2entries: could not fetch events from database: %s", _es, err.Error())
+			return
+		}
+		occurredAt, err := time.Parse(time.RFC3339Nano, timestamp)
+		if err != nil {
+			log.Printf("[ERROR]\t%T.rows2entries: couldn't parse timestamp(%s), err: %s", _es, timestamp, err)
+			return
+		}
+		opts := []event.Option{event.WithID(ID), event.WithEventType(event.DomainEvent), event.WithPayload(payload)}
+		events[globalPos] = event.NewEventAt(name, aggregateID, occurredAt, opts...)
+	}
+	entries := make([]*es.Entry, 0)
+	for k, v := range events {
+		entries = append(entries, es.NewEntry(k, v))
+	}
+	evently.DEBUG("len(entries)=%d", len(entries))
+	res <- entries
 }
 
 func (_es *EventStore) saveEvent(tx *sql.Tx, stream string, event *event.Event, expectedVersion uint64) error {

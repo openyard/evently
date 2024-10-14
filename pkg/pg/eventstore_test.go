@@ -19,7 +19,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-func TestEventStore_AppendToStream(t *testing.T) {
+func TestEventStore_Append(t *testing.T) {
 	if testing.Short() {
 		t.Skipf("skipping [TestEventStore_AppendToStream] in testing.Short() mode")
 	}
@@ -36,11 +36,11 @@ func TestEventStore_AppendToStream(t *testing.T) {
 		t.Error(err)
 	}
 	t.Logf("using connection(%s)", connectionString)
-	_es := pg.NewEventStore(_db)
-	err = _es.AppendToStream("my-stream", 0,
+	_es := pg.NewEventStore(_db, pg.WithBatchMode())
+	err = _es.Append(es.NewChange("my-stream", 0,
 		event.NewDomainEvent("my-first-event", "4711"),
 		event.NewDomainEvent("my-second-event", "4711"),
-		event.NewDomainEvent("my-third-event", "4711"))
+		event.NewDomainEvent("my-third-event", "4711")))
 	if err != nil {
 		t.Error(err)
 	}
@@ -52,7 +52,7 @@ func TestEventStore_AppendToStream(t *testing.T) {
 	printEvents(t, err, _db)
 }
 
-func TestEventStore_AppendToStreamBatch(t *testing.T) {
+func TestEventStore_AppendBatch(t *testing.T) {
 	if testing.Short() {
 		t.Skipf("skipping [TestEventStore_AppendToStream] in testing.Short() mode")
 	}
@@ -80,7 +80,7 @@ func TestEventStore_AppendToStreamBatch(t *testing.T) {
 	printEvents(t, err, _db)
 }
 
-func TestEventStore_AppendToStreamBulk(t *testing.T) {
+func TestEventStore_AppendBulk(t *testing.T) {
 	if testing.Short() {
 		t.Skipf("skipping [TestEventStore_AppendToStream] in testing.Short() mode")
 	}
@@ -98,17 +98,17 @@ func TestEventStore_AppendToStreamBulk(t *testing.T) {
 	}
 	t.Logf("using connection(%s)", connectionString)
 	_es := pg.NewEventStore(_db, pg.WithBulkMode())
-	err = _es.AppendToStream("my-stream", 0,
+	err = _es.Append(es.NewChange("my-stream", 0,
 		event.NewDomainEvent("my-first-event", "4711"),
 		event.NewDomainEvent("my-second-event", "4711"),
-		event.NewDomainEvent("my-third-event", "4711"))
+		event.NewDomainEvent("my-third-event", "4711")))
 	if err != nil {
 		t.Error(err)
 	}
 	printEvents(t, err, _db)
 }
 
-func TestEventStore_AppendToStreamsBatch(t *testing.T) {
+func TestEventStore_AppendStreamsBatch(t *testing.T) {
 	if testing.Short() {
 		t.Skipf("skipping [TestEventStore_AppendToStream] in testing.Short() mode")
 	}
@@ -133,7 +133,7 @@ func TestEventStore_AppendToStreamsBatch(t *testing.T) {
 	printEvents(t, err, _db)
 }
 
-func TestEventStore_AppendToStreamsBulk(t *testing.T) {
+func TestEventStore_AppendStreamsBulk(t *testing.T) {
 	if testing.Short() {
 		t.Skipf("skipping [TestEventStore_AppendToStream] in testing.Short() mode")
 	}

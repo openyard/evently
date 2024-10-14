@@ -83,13 +83,13 @@ func (s *Volatile) start(transport es.Transport) {
 			return
 		case <-s.ticker.C:
 			if s.offset == 0 {
-				offset, inflight := transport.Subscribe(defaultBatchSize)
+				inflight := transport.Subscribe(defaultBatchSize)
 				entries := <-inflight
 				evently.DEBUG("[DEBUG][%T] inflight new entries(%+v) ...", s, len(entries))
 				if len(entries) == 0 {
 					continue
 				}
-				s.offset = offset + uint64(len(entries))
+				s.offset += uint64(len(entries))
 				s.entries <- entries
 			} else {
 				inflight := transport.SubscribeWithOffset(s.offset, defaultBatchSize)

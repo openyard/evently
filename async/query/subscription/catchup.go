@@ -88,6 +88,7 @@ func (s *CatchUp) start(offset uint64, transport es.Transport) {
 	log.Printf("[INFO][%T] start listening <id=%s,worker-id=%s>", s, s.id, s.workerID)
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 	for {
+		evently.DEBUG("...")
 		select {
 		case <-s.ctx.Done():
 			log.Printf("[INFO][%T] stop subscription <id=%s,worker-id=%s>", s, s.id, s.workerID)
@@ -95,11 +96,10 @@ func (s *CatchUp) start(offset uint64, transport es.Transport) {
 		case <-s.ticker.C:
 			inflight := transport.SubscribeWithOffset(offset, defaultBatchSize)
 			entries := <-inflight
-			evently.DEBUG("[DEBUG][%T] inflight new entries(%+v) ...", s, len(entries))
 			if len(entries) == 0 {
 				continue
 			}
-			offset += 1
+			offset += uint64(len(entries)) + 1
 			s.commands <- &cmd{
 				entries:   entries,
 				onHandled: s.ack,
