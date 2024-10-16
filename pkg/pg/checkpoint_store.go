@@ -56,7 +56,8 @@ func (cp *CheckpointStore) StoreCheckpoint(checkpoint *subscription.Checkpoint) 
 	result, err := tx.Exec(
 		`insert into CHECKPOINTS (SUBSCRIPTION_ID, GLOBAL_POSITION, LAST_SEEN_AT) values ($1, $2, $3)
 				on conflict on constraint PK_CHECKPOINTS 
-				do update set GLOBAL_POSITION = excluded.GLOBAL_POSITION, LAST_SEEN_AT = excluded.LAST_SEEN_AT`,
+				do update set GLOBAL_POSITION = excluded.GLOBAL_POSITION, LAST_SEEN_AT = excluded.LAST_SEEN_AT
+				where CHECKPOINTS.GLOBAL_POSITION < excluded.GLOBAL_POSITION`,
 		checkpoint.ID(), checkpoint.GlobalPosition(), time.Now().UTC().Format(time.RFC3339Nano))
 	if err != nil {
 		log.Printf("[ERROR]\t%T.StoreCheckpoint failed (1): %s", cp, err)

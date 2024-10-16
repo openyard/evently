@@ -99,7 +99,7 @@ func (s *CatchUp) start(offset uint64, transport es.Transport) {
 			if len(entries) == 0 {
 				continue
 			}
-			offset += uint64(len(entries)) + 1
+			offset += uint64(len(entries))
 			s.commands <- &cmd{
 				entries:   entries,
 				onHandled: s.ack,
