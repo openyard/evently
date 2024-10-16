@@ -93,8 +93,9 @@ func (_es *EventStore) Append(changes ...es.Change) error {
 			log.Printf("[TRACE][%T] Append: (%d) took %s", _es, len(changes), time.Since(start))
 		}
 	}()
+	merged := es.Merge(changes)
 	streams := make(map[string]map[uint64][]*event.Event)
-	for _, c := range changes {
+	for _, c := range merged {
 		if _, ok := streams[c.Stream()]; !ok {
 			streams[c.Stream()] = make(map[uint64][]*event.Event)
 			streams[c.Stream()][c.ExpectedVersion()] = make([]*event.Event, 0)
@@ -113,19 +114,20 @@ func (_es *EventStore) Append(changes ...es.Change) error {
 		i := 0
 		for stream, newEntries := range streams {
 			for expectedVersion, events := range newEntries {
+				j := 1
 				for _, evt := range events {
 					valueStrings = append(valueStrings, fmt.Sprintf(
 						"($%d, $%d, $%d, $%d, $%d, $%d, $%d)", i*COLUMNS+1, i*COLUMNS+2, i*COLUMNS+3, i*COLUMNS+4, i*COLUMNS+5, i*COLUMNS+6, i*COLUMNS+7))
 					valueArgs = append(valueArgs, stream)
-					valueArgs = append(valueArgs, expectedVersion+uint64(i)+1)
+					valueArgs = append(valueArgs, expectedVersion+uint64(j))
 					valueArgs = append(valueArgs, evt.AggregateID())
 					valueArgs = append(valueArgs, evt.ID())
 					valueArgs = append(valueArgs, evt.Name())
 					valueArgs = append(valueArgs, evt.OccurredAt().UTC().Format(time.RFC3339Nano))
 					valueArgs = append(valueArgs, evt.Payload())
-					expectedVersion++
 					rowsExpected++
 					i++
+					j++
 				}
 			}
 		}
@@ -151,7 +153,7 @@ func (_es *EventStore) Append(changes ...es.Change) error {
 				i := 0
 				for _, evt := range events {
 					streamNames = append(streamNames, stream)
-					streamVersions = append(streamVersions, expectedVersion+uint64(i))
+					streamVersions = append(streamVersions, expectedVersion+uint64(i)+1)
 					aggregateIDs = append(aggregateIDs, evt.AggregateID())
 					eventIDs = append(eventIDs, evt.ID())
 					eventNames = append(eventNames, evt.Name())
