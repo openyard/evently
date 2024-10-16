@@ -21,7 +21,7 @@ func SubscribeCustomerEvents(
 		func(entries ...*es.Entry) {
 			evently.DEBUG("[DEBUG] ackFunc - update checkpoint")
 			checkpoint := checkpointStore.GetLatestCheckpoint("customer-events")
-			checkpoint.MaxGlobalPos(entries...)
+			checkpoint.Update(checkpoint.MaxGlobalPos(entries...))
 			checkpointStore.StoreCheckpoint(checkpoint)
 		},
 		func(args ...*es.Entry) {

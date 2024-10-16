@@ -250,7 +250,7 @@ func (_es *EventStore) queryStreamsAt(upTo time.Time, name ...string) (*sql.Rows
 
 func (_es *EventStore) queryEntries(offset uint64, limit uint16) (*sql.Rows, error) {
 	return _es.db.Query("select GLOBAL_POSITION, AGGREGATE_ID, EVENT_ID, EVENT_NAME, EVENT_OCCURRED_AT, EVENT "+
-		"from EVENTS where GLOBAL_POSITION >= $1 order by EVENT_OCCURRED_AT ASC limit $2", offset, limit,
+		"from EVENTS where GLOBAL_POSITION > $1 order by EVENT_OCCURRED_AT ASC limit $2", offset, limit,
 	)
 }
 
