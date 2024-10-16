@@ -26,8 +26,8 @@ type Callback interface {
 	// resulting event as eventID in order to tackle the right handler immediately.
 	// Alternative registration can be done using the event-name as ID.
 	Register(ID string, handle EventHandler)
-	// Unsubscribe the event-handler with the given ID
-	Unsubscribe(ID string)
+	// Unregister the event-handler with the given ID
+	Unregister(ID string)
 }
 
 // Transition is a func to apply the given ddd.DomainEvent

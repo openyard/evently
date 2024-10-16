@@ -67,6 +67,6 @@ func (svc *Service) Register(ID string, handle es.EventHandler) {
 	svc.handler[ID] = handle
 }
 
-func (svc *Service) Unsubscribe(ID string) {
+func (svc *Service) Unregister(ID string) {
 	delete(svc.handler, ID)
 }
