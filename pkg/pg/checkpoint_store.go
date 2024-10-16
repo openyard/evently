@@ -2,6 +2,7 @@ package pg
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 	"time"
 
@@ -48,12 +49,7 @@ func (cp *CheckpointStore) GetLatestCheckpoint(checkpointID string) *subscriptio
 }
 
 func (cp *CheckpointStore) StoreCheckpoint(checkpoint *subscription.Checkpoint) {
-	tx, err := cp.db.Begin()
-	if err != nil {
-		log.Printf("[ERROR]\t%T.StoreCheckpoint failed: %s", cp, err)
-		return
-	}
-	result, err := tx.Exec(
+	result, err := cp.db.Exec(
 		`insert into CHECKPOINTS (SUBSCRIPTION_ID, GLOBAL_POSITION, LAST_SEEN_AT) values ($1, $2, $3)
 				on conflict on constraint PK_CHECKPOINTS 
 				do update set GLOBAL_POSITION = excluded.GLOBAL_POSITION, LAST_SEEN_AT = excluded.LAST_SEEN_AT
@@ -61,21 +57,21 @@ func (cp *CheckpointStore) StoreCheckpoint(checkpoint *subscription.Checkpoint) 
 		checkpoint.ID(), checkpoint.GlobalPosition(), time.Now().UTC().Format(time.RFC3339Nano))
 	if err != nil {
 		log.Printf("[ERROR]\t%T.StoreCheckpoint failed (1): %s", cp, err)
-		_ = tx.Rollback()
 		return
 	}
 	count, err := result.RowsAffected()
 	if err != nil {
 		log.Printf("[ERROR]\t%T.StoreCheckpoint failed (2): %s", cp, err)
-		_ = tx.Rollback()
 		return
 	}
-	if count != 1 {
-		log.Printf("[ERROR]\t%T.StoreCheckpoint failed (3): %s", cp, err)
-		_ = tx.Rollback()
+	if count > 1 {
+		log.Printf("[ERROR]\t%T.StoreCheckpoint failed (3): %s", cp, fmt.Errorf("updated <%d> rows, expected max <1>", count))
 		return
 	}
-	_ = tx.Commit()
+	if count == 0 {
+		log.Printf("[INFO]\t%T.StoreCheckpoint ignored checkpint update, already greater than <%d>: %s", cp, checkpoint.GlobalPosition(), checkpoint.ID())
+		return
+	}
 	log.Printf("[TRACE]\t[%T].StoreCheckpoint done: ID=%s, pos=%d, lastSeen=%s",
 		cp, checkpoint.ID(), checkpoint.GlobalPosition(), checkpoint.LastSeenAt())
 }
