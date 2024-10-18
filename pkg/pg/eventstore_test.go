@@ -52,6 +52,41 @@ func _TestEventStore_Append(t *testing.T) {
 	printEvents(t, err, _db)
 }
 
+func TestEventStore_Read(t *testing.T) {
+	if testing.Short() {
+		t.Skipf("skipping [TestEventStore_Read] in testing.Short() mode")
+	}
+	ctx := context.Background()
+	db := initTestDB(ctx)
+	defer stopTestDB(ctx, db)
+
+	connectionString, err := db.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		t.Error(err)
+	}
+	_db, err := sql.Open("postgres", connectionString)
+	if err != nil {
+		t.Error(err)
+	}
+	t.Logf("using connection(%s)", connectionString)
+	_es := pg.NewEventStore(_db, pg.WithBatchMode())
+	err = _es.Append(es.NewChange("my-stream", 0,
+		event.NewDomainEvent("my-first-event", "4711"),
+		event.NewDomainEvent("my-second-event", "4711"),
+		event.NewDomainEvent("my-third-event", "4711")))
+	if err != nil {
+		t.Error(err)
+	}
+	streams, err := _es.Read("my-stream")
+	if len(streams) != 1 {
+		t.Errorf("expected 1 stream, got %d", len(streams))
+	}
+	if err != nil {
+		t.Error(err)
+	}
+	t.Logf("read stream <%s> in version <%d> with <%d> events", streams[0].Name(), streams[0].Version(), len(streams[0].Events()))
+}
+
 func _TestEventStore_AppendBatch_SingleChange(t *testing.T) {
 	if testing.Short() {
 		t.Skipf("skipping [TestEventStore_AppendToStream] in testing.Short() mode")

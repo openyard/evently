@@ -66,7 +66,6 @@ func (_es *EventStore) Read(streams ...string) ([]es.Stream, error) {
 		log.Printf("could not select stream from database: %s", err.Error())
 		return res, evently.Errorf(es.ErrReadStreamsFailed, "ErrReadStreamsFailed", "%s", streams)
 	}
-	_ = rows.Close()
 	defer func() {
 		_ = rows.Close()
 	}()
@@ -237,14 +236,14 @@ func (_es *EventStore) SubscribeWithID(ID string, limit uint16) chan []*es.Entry
 }
 
 func (_es *EventStore) queryStreams(name ...string) (*sql.Rows, error) {
-	return _es.db.Query("select GLOBAL_POSITION, STREAM_NAME, AGGREGATE_ID, EVENT_ID, EVENT_NAME, EVENT_OCCURRED_AT, EVENT "+
-		"from EVENTS where STREAM_NAME in (SELECT unnest($1::text[])) order by EVENT_OCCURRED_AT ASC", name,
+	return _es.db.Query("select STREAM_NAME, AGGREGATE_ID, EVENT_ID, EVENT_NAME, EVENT_OCCURRED_AT, EVENT "+
+		"from EVENTS where STREAM_NAME in (SELECT unnest($1::text[])) order by EVENT_OCCURRED_AT ASC", pq.Array(name),
 	)
 }
 
 func (_es *EventStore) queryStreamsAt(upTo time.Time, name ...string) (*sql.Rows, error) {
-	return _es.db.Query("select GLOBAL_POSITION, STREAM_NAME, AGGREGATE_ID, EVENT_ID, EVENT_NAME, EVENT_OCCURRED_AT, EVENT "+
-		"from EVENTS where STREAM_NAME in (SELECT unnest($1::text[])) and EVENT_OCCURRED_AT < $2 order by EVENT_OCCURRED_AT ASC", name, upTo.Format(time.RFC3339Nano),
+	return _es.db.Query("select STREAM_NAME, AGGREGATE_ID, EVENT_ID, EVENT_NAME, EVENT_OCCURRED_AT, EVENT "+
+		"from EVENTS where STREAM_NAME in (SELECT unnest($1::text[])) and EVENT_OCCURRED_AT < $2 order by EVENT_OCCURRED_AT ASC", pq.Array(name), upTo.Format(time.RFC3339Nano),
 	)
 }
 
