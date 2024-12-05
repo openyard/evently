@@ -87,6 +87,37 @@ func TestEventStore_Read(t *testing.T) {
 	t.Logf("read stream <%s> in version <%d> with <%d> events", streams[0].Name(), streams[0].Version(), len(streams[0].Events()))
 }
 
+func TestEventStore_Delete(t *testing.T) {
+	if testing.Short() {
+		t.Skipf("skipping [TestEventStore_Delete] in testing.Short() mode")
+	}
+	ctx := context.Background()
+	db := initTestDB(ctx)
+	defer stopTestDB(ctx, db)
+
+	connectionString, err := db.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		t.Error(err)
+	}
+	_db, err := sql.Open("postgres", connectionString)
+	if err != nil {
+		t.Error(err)
+	}
+	t.Logf("using connection(%s)", connectionString)
+	_es := pg.NewEventStore(_db, pg.WithBatchMode())
+	err = _es.Append(es.NewChange("my-stream", 0,
+		event.NewDomainEvent("my-first-event", "4711"),
+		event.NewDomainEvent("my-second-event", "4711"),
+		event.NewDomainEvent("my-third-event", "4711")))
+	if err != nil {
+		t.Error(err)
+	}
+	err = _es.Delete("my-stream")
+	if err != nil {
+		t.Error(err)
+	}
+}
+
 func _TestEventStore_AppendBatch_SingleChange(t *testing.T) {
 	if testing.Short() {
 		t.Skipf("skipping [TestEventStore_AppendToStream] in testing.Short() mode")

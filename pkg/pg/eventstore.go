@@ -59,32 +59,6 @@ func WithCompression() EventStoreOption {
 	}
 }
 
-func (_es *EventStore) Read(streams ...string) ([]es.Stream, error) {
-	res := make([]es.Stream, 0)
-	rows, err := _es.queryStreams(streams...)
-	if err != nil {
-		log.Printf("could not select stream from database: %s", err.Error())
-		return res, evently.Errorf(es.ErrReadStreamsFailed, "ErrReadStreamsFailed", "%s", streams)
-	}
-	defer func() {
-		_ = rows.Close()
-	}()
-	return _es.rows2streams(rows), nil
-}
-
-func (_es *EventStore) ReadAt(at time.Time, streams ...string) ([]es.Stream, error) {
-	res := make([]es.Stream, 0)
-	rows, err := _es.queryStreamsAt(at, streams...)
-	if err != nil {
-		log.Printf("could not select streams from database: %s", err.Error())
-		return res, evently.Errorf(es.ErrReadStreamsFailed, "ErrReadStreamsFailed", "%s", streams)
-	}
-	defer func() {
-		_ = rows.Close()
-	}()
-	return _es.rows2streams(rows), nil
-}
-
 func (_es *EventStore) Append(changes ...es.Change) error {
 	start := time.Now()
 	defer func() {
@@ -177,6 +151,48 @@ func (_es *EventStore) Append(changes ...es.Change) error {
 		return evently.Errorf(es.ErrMisconfiguration, "ErrMisconfiguration", "[ERROR][%T] no batch or bulk mode set for append multiple streams", _es)
 	}
 	return tx.Commit()
+}
+
+func (_es *EventStore) Delete(streams ...string) error {
+	start := time.Now()
+	defer func() {
+		if os.Getenv("TRACE") != "" {
+			log.Printf("[TRACE][%T] Delete: (%d) took %s", _es, len(streams), time.Since(start))
+		}
+	}()
+	result, err := _es.db.Exec(bulkDeleteStmt, pq.Array(streams))
+	if err != nil {
+		return err
+	}
+	count, _ := result.RowsAffected()
+	log.Printf("[TRACE][%T] bulkDelete done: streams=%d, events=%d)", _es, len(streams), count)
+	return nil
+}
+
+func (_es *EventStore) Read(streams ...string) ([]es.Stream, error) {
+	res := make([]es.Stream, 0)
+	rows, err := _es.queryStreams(streams...)
+	if err != nil {
+		log.Printf("could not select stream from database: %s", err.Error())
+		return res, evently.Errorf(es.ErrReadStreamsFailed, "ErrReadStreamsFailed", "%s", streams)
+	}
+	defer func() {
+		_ = rows.Close()
+	}()
+	return _es.rows2streams(rows), nil
+}
+
+func (_es *EventStore) ReadAt(at time.Time, streams ...string) ([]es.Stream, error) {
+	res := make([]es.Stream, 0)
+	rows, err := _es.queryStreamsAt(at, streams...)
+	if err != nil {
+		log.Printf("could not select streams from database: %s", err.Error())
+		return res, evently.Errorf(es.ErrReadStreamsFailed, "ErrReadStreamsFailed", "%s", streams)
+	}
+	defer func() {
+		_ = rows.Close()
+	}()
+	return _es.rows2streams(rows), nil
 }
 
 func (_es *EventStore) AppendToStream(stream string, expectedVersion uint64, events ...*event.Event) error {
@@ -419,4 +435,5 @@ const (
 	batchInsertStmt = `insert into EVENTS(STREAM_NAME, STREAM_POSITION, AGGREGATE_ID, EVENT_ID, EVENT_NAME, EVENT_OCCURRED_AT, EVENT) values %s`
 	bulkInsertStmt  = `insert into EVENTS(STREAM_NAME, STREAM_POSITION, AGGREGATE_ID, EVENT_ID, EVENT_NAME, EVENT_OCCURRED_AT, EVENT) (
     					select * from unnest($1::text[], $2::int[], $3::text[], $4::text[], $5::text[], $6::text[], $7::bytea[]))`
+	bulkDeleteStmt = `delete from EVENTS where STREAM_NAME in (select * from unnest($1::text[]))`
 )

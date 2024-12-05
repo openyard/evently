@@ -26,6 +26,13 @@ type EventStore struct {
 	log     []*es.Entry
 }
 
+func (_es *EventStore) Delete(streams ...string) error {
+	for _, stream := range streams {
+		delete(_es.streams, stream)
+	}
+	return nil
+}
+
 // WithVolatileEventStore creates an in-memory event-store and executes the given func
 func WithVolatileEventStore(f func(es *EventStore)) {
 	es_ := NewEventStore()

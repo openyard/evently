@@ -10,6 +10,8 @@ import (
 type EventStore interface {
 	// Append adds the events to the assigned streams in one batch
 	Append(changes ...Change) error
+	// Delete removes streams from event-store physically
+	Delete(streams ...string) error
 	// Read loads all requested streams and returns them with its events
 	Read(streams ...string) ([]Stream, error)
 	// ReadAt loads requested streams at a certain point in time and returns them with its events up to this point
