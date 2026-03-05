@@ -29,15 +29,18 @@ type Volatile struct {
 }
 
 // NewVolatile returns a subscription.Volatile with given ID starting without offset
-// subsribing at given es.Transport
-func NewVolatile(ID string, transport es.Transport) *Volatile {
+// subscribing at given es.Transport
+func NewVolatile(ID string, transport es.Transport, opts ...VolatileOption) *Volatile {
 	s := &Volatile{
 		id:       ID,
 		workerID: uuid.NewV4().String(),
 		entries:  make(chan []*es.Entry),
 		consume:  consume.DefaultConsumer.Consume,
-		offset:   0,
+		offset:   transport.Offset(),
 		ticker:   time.NewTicker(defaultSLA),
+	}
+	for _, opt := range opts {
+		opt(s)
 	}
 	go s.start(transport)
 	return s
@@ -82,25 +85,14 @@ func (s *Volatile) start(transport es.Transport) {
 			log.Printf("[INFO][%T] stop subscription <id=%s,worker-id=%s>", s, s.id, s.workerID)
 			return
 		case <-s.ticker.C:
-			if s.offset == 0 {
-				inflight := transport.Subscribe(defaultBatchSize)
-				entries := <-inflight
-				evently.DEBUG("[DEBUG][%T] inflight new entries(%+v) ...", s, len(entries))
-				if len(entries) == 0 {
-					continue
-				}
-				s.offset += uint64(len(entries))
-				s.entries <- entries
-			} else {
-				inflight := transport.SubscribeWithOffset(s.offset, defaultBatchSize)
-				entries := <-inflight
-				evently.DEBUG("[DEBUG][%T] inflight new entries(%+v) ...", s, len(entries))
-				if len(entries) == 0 {
-					continue
-				}
-				s.offset += uint64(len(entries))
-				s.entries <- entries
+			inflight := transport.SubscribeWithOffset(s.offset, defaultBatchSize)
+			entries := <-inflight
+			evently.DEBUG("[DEBUG][%T] inflight new entries(%+v) ...", s, len(entries))
+			if len(entries) == 0 {
+				continue
 			}
+			s.offset += uint64(len(entries))
+			s.entries <- entries
 		}
 	}
 }

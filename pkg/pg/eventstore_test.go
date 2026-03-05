@@ -19,7 +19,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-func _TestEventStore_Append(t *testing.T) {
+func TestEventStore_Append(t *testing.T) {
 	if testing.Short() {
 		t.Skipf("skipping [TestEventStore_AppendToStream] in testing.Short() mode")
 	}
@@ -118,7 +118,7 @@ func TestEventStore_Delete(t *testing.T) {
 	}
 }
 
-func _TestEventStore_AppendBatch_SingleChange(t *testing.T) {
+func TestEventStore_AppendBatch_SingleChange(t *testing.T) {
 	if testing.Short() {
 		t.Skipf("skipping [TestEventStore_AppendToStream] in testing.Short() mode")
 	}
@@ -146,7 +146,7 @@ func _TestEventStore_AppendBatch_SingleChange(t *testing.T) {
 	printEvents(t, err, _db)
 }
 
-func _TestEventStore_AppendBatch_MultipleChanges(t *testing.T) {
+func TestEventStore_AppendBatch_MultipleChanges(t *testing.T) {
 	if testing.Short() {
 		t.Skipf("skipping [TestEventStore_AppendToStream] in testing.Short() mode")
 	}
@@ -174,7 +174,7 @@ func _TestEventStore_AppendBatch_MultipleChanges(t *testing.T) {
 	printEvents(t, err, _db)
 }
 
-func _TestEventStore_AppendBulk_SingleChange(t *testing.T) {
+func TestEventStore_AppendBulk_SingleChange(t *testing.T) {
 	if testing.Short() {
 		t.Skipf("skipping [TestEventStore_AppendToStream] in testing.Short() mode")
 	}
@@ -202,7 +202,7 @@ func _TestEventStore_AppendBulk_SingleChange(t *testing.T) {
 	printEvents(t, err, _db)
 }
 
-func _TestEventStore_AppendBulk_MultipleChanges(t *testing.T) {
+func TestEventStore_AppendBulk_MultipleChanges(t *testing.T) {
 	if testing.Short() {
 		t.Skipf("skipping [TestEventStore_AppendToStream] in testing.Short() mode")
 	}
@@ -305,7 +305,7 @@ func TestEventStore_AppendStreamsBatch_WithBundledChanges(t *testing.T) {
 	printEvents(t, err, _db)
 }
 
-func TestEventStore_AppendStreamsBulk_WithBundĺedChanges(t *testing.T) {
+func TestEventStore_AppendStreamsBulk_WithBundledChanges(t *testing.T) {
 	if testing.Short() {
 		t.Skipf("skipping [TestEventStore_AppendToStream] in testing.Short() mode")
 	}
@@ -328,6 +328,33 @@ func TestEventStore_AppendStreamsBulk_WithBundĺedChanges(t *testing.T) {
 		t.Error(err)
 	}
 	printEvents(t, err, _db)
+}
+
+func TestEventStore_Offset(t *testing.T) {
+	if testing.Short() {
+		t.Skipf("skipping [TestEventStore_AppendToStream] in testing.Short() mode")
+	}
+	ctx := context.Background()
+	db := initTestDB(ctx)
+	defer stopTestDB(ctx, db)
+
+	connectionString, err := db.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		t.Error(err)
+	}
+	_db, err := sql.Open("postgres", connectionString)
+	if err != nil {
+		t.Error(err)
+	}
+	t.Logf("using connection(%s)", connectionString)
+	_es := pg.NewEventStore(_db, pg.WithBulkMode())
+	err = _es.Append(createBundledChanges()...)
+	if err != nil {
+		t.Error(err)
+	}
+	if _es.Offset() != 30 {
+		t.Errorf("offset should be 30 but is %d", _es.Offset())
+	}
 }
 
 func createSingleChanges() []es.Change {
@@ -390,13 +417,13 @@ func printEvents(t *testing.T, err error, _db *sql.DB) {
 }
 
 func initTestDB(ctx context.Context) *postgres.PostgresContainer {
+	_ = os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
 	dbName := "testdb"
 	dbUser := "testuser"
 	dbPassword := "11111"
 
 	postgresContainer, err := postgres.RunContainer(ctx,
-		testcontainers.WithImage("nexus.flatex.com:8271/library/postgres:15.2-alpine"),
-		//testcontainers.WithImage("docker.io/postgres:15.2-alpine"),
+		testcontainers.WithImage("docker.io/postgres:15.2-alpine"),
 		postgres.WithDatabase(dbName),
 		postgres.WithUsername(dbUser),
 		postgres.WithPassword(dbPassword),

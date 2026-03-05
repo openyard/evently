@@ -229,8 +229,12 @@ func (_es *EventStore) AppendToStream(stream string, expectedVersion uint64, eve
 	return tx.Commit()
 }
 
-func (_es *EventStore) Subscribe(limit uint16) chan []*es.Entry {
-	return _es.SubscribeWithOffset(0, limit) // use maxPos()
+func (_es *EventStore) Offset() uint64 {
+	pos, err := _es.queryMaxPos()
+	if err != nil {
+		return 0
+	}
+	return pos
 }
 
 func (_es *EventStore) SubscribeWithOffset(offset uint64, limit uint16) chan []*es.Entry {
@@ -267,6 +271,12 @@ func (_es *EventStore) queryEntries(offset uint64, limit uint16) (*sql.Rows, err
 	return _es.db.Query("select GLOBAL_POSITION, AGGREGATE_ID, EVENT_ID, EVENT_NAME, EVENT_OCCURRED_AT, EVENT "+
 		"from EVENTS where GLOBAL_POSITION > $1 order by GLOBAL_POSITION ASC limit $2", offset, limit,
 	)
+}
+
+func (_es *EventStore) queryMaxPos() (uint64, error) {
+	var pos uint64
+	err := _es.db.QueryRow("select max(GLOBAL_POSITION) from EVENTS ").Scan(&pos)
+	return pos, err
 }
 
 func (_es *EventStore) rows2streams(rows *sql.Rows) []es.Stream {

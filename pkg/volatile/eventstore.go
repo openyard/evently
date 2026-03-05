@@ -10,8 +10,6 @@ import (
 	"github.com/openyard/evently/tact/es"
 )
 
-const defaultOffset = 0
-
 var (
 	_ es.EventStore = (*EventStore)(nil)
 	_ es.Transport  = (*EventStore)(nil)
@@ -95,14 +93,15 @@ func (_es *EventStore) ReadAt(at time.Time, streams ...string) ([]es.Stream, err
 }
 
 func (_es *EventStore) Log() []*es.Entry {
+	_es.RLock()
+	defer _es.RUnlock()
 	return _es.log
 }
 
-func (_es *EventStore) Subscribe(limit uint16) chan []*es.Entry {
-	currentPos := uint64(len(_es.log))
-	entries := make(chan []*es.Entry)
-	go _es.receiveEntries(currentPos, limit, entries)
-	return entries
+func (_es *EventStore) Offset() uint64 {
+	_es.RLock()
+	defer _es.RUnlock()
+	return uint64(len(_es.log))
 }
 
 func (_es *EventStore) SubscribeWithOffset(offset uint64, limit uint16) chan []*es.Entry {
@@ -119,7 +118,7 @@ func (_es *EventStore) receiveEntries(offset uint64, limit uint16, next chan []*
 	defer close(next)
 	_es.sync(func() {
 		count := len(_es.log)
-		if offset >= uint64(count) {
+		if offset > uint64(count) {
 			next <- nil
 			return
 		}

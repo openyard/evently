@@ -37,9 +37,10 @@ type Transition func(e *event.Event)
 
 // Transport interface provides methods to receive new events asynchronously
 type Transport interface {
-	// Subscribe starts to listen for new events
-	// You use this method most likely for volatile-subscriptions to receive only new events from now on
-	Subscribe(limit uint16) chan []*Entry
+	// Offset returns the current global position of the event-store
+	// You use this method most likely for volatile-subscriptions before listening to new entries to receive only
+	// new events from now on based on this offset
+	Offset() uint64
 	// SubscribeWithID fetches remaining events based on given ID and listen for new events
 	// You use this method most likely for persistent-subscriptions if the underlying Transport (EventStore) supports it
 	SubscribeWithID(ID string, limit uint16) chan []*Entry
