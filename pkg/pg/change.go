@@ -3,6 +3,7 @@ package pg
 import (
 	"database/sql"
 	"log"
+	"sort"
 	"time"
 )
 
@@ -11,26 +12,48 @@ type Change struct {
 
 type ChangeSet map[string][]string
 
+type ChangeEntry struct {
+	ID       string
+	Commands []string
+}
+
+type ChangeList []ChangeEntry
+
 func NewChange() *Change {
 	return &Change{}
 }
 
-func (c *Change) Install(db *sql.DB, changeSet ChangeSet) error {
+func (c *Change) Install(db *sql.DB, changes ChangeSet) error {
+
+	keys := make([]string, 0, len(changes))
+	for k := range changes {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	changeList := make(ChangeList, 0, len(changes))
+	for _, id := range keys {
+		c := changes[id]
+		changeList = append(changeList, ChangeEntry{id, c})
+	}
+	return c.InstallOrdered(db, changeList)
+}
+
+func (c *Change) InstallOrdered(db *sql.DB, changeList ChangeList) error {
 	conn := db
 	if err := c.assertChangeRepository(conn); err != nil {
 		return err
 	}
-	for id, change := range changeSet {
-		old, err := c.applyChange(db, id, change)
+	for _, entry := range changeList {
+		old, err := c.applyChange(db, entry.ID, entry.Commands)
 		if err != nil {
-			log.Printf("!! could not apply change %q - %s", id, err.Error())
+			log.Printf("!! could not apply change %q - %s", entry.ID, err.Error())
 			log.Printf("!!!! migration abort !!!!")
 			return err
 		}
 		if old {
-			log.Printf("-- change %q already loaded", id)
+			log.Printf("-- change %q already loaded", entry.ID)
 		} else {
-			log.Printf("** change %q applied", id)
+			log.Printf("** change %q applied", entry.ID)
 		}
 	}
 	log.Printf("---- migration complete ----")
